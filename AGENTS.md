@@ -81,23 +81,43 @@
 - 不允许在同一 commit 混合前后端改动。
 
 ### 4.4 Session Notes 机制（个人多 Session，必做）
-本项目是个人开发，统一使用 `SESSION_NOTES.md` 记录多 session 交接。
+本项目统一使用 `SESSION_NOTES.md`（fenced JSON）记录多 Agent 交接；每条记录一个 ` ```json ... ``` ` 代码块。
 
-记录方式（半自动）：
-- session 开始时执行：
-  - `python scripts/session_notes.py start --session <session-name>`
-- session 结束时执行：
-  - `python scripts/session_notes.py end --session <session-name> --next "<next>" --risk "<risk>"`
+字段规范：
+1. 必填：`id`, `ts`, `status`, `scope`, `who`, `what`, `next`
+2. 可选：`dep`, `risk`
+3. `status` 固定为 `OPEN`（单状态）
+4. `who` 必须包含：`agent`, `side`, `branch`, `head`
+5. `what` 用数组记录变更动作，并包含必要动机（`what + why`）
+6. `dep` 仅在需要对方协作时填写
+7. `next` 必须包含：`goal`, `owner`
 
-说明：
-1. `start` 自动记录分支、HEAD、worktree、时间。
-2. `end` 自动记录最近一次 commit、改动文件列表。
-3. `next` 和 `risk` 由人工填写，保证后续 session 可直接接续。
+记录方式（自动写入）：
+- 每完成一个可交接单元后执行：
+  - `python scripts/session_notes.py log --scope "<scope>" --agent <agent> --side <frontend|backend> --what "<what>" --why "<why>" --next-goal "<goal>" --next-owner "<owner>"`
+- 可重复参数：`--what`、`--dep`、`--risk`
+- `id` 默认自动递增（如 `C-001`），可选 `--id` 手工指定
+- 当前脚本仅解析 fenced JSON 记录；若有历史 JSONL 行，需先迁移后再继续自动递增。
+
+fenced JSON 示例：
+```json
+{
+  "id": "C-001",
+  "ts": "2026-02-13T16:20:00+01:00",
+  "status": "OPEN",
+  "scope": "upload-review chain",
+  "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend","head":"28997aa"},
+  "what": ["connected Upload->Review->Submit flow","why: backend requires canonical nested payload"],
+  "dep": ["backend: CORS allow http://localhost:5173"],
+  "risk": ["mock API only; real API not validated"],
+  "next": {"goal":"switch to real API and run smoke","owner":"agent-a"}
+}
+```
 
 ### 4.5 API 契约优先
 - 前后端统一读 `src/bills_analysis/models/` 中的 schema。
 - API 变更必须先更新 schema，再更新调用方。
-- breaking change 必须在 `SESSION_NOTES.md` 标红说明（在 `risk_or_note` 中明确）。
+- breaking change 必须在 `SESSION_NOTES.md` 明确说明（在 `risk` 字段中记录影响和迁移建议）。
 
 ### 4.6 配置与密钥
 - `.env` 不入库。
