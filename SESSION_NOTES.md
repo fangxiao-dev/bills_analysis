@@ -121,3 +121,38 @@
 }
 ```
 
+```json
+{
+  "id": "C-010",
+  "ts": "2026-02-14T19:43:38+01:00",
+  "status": "CLOSED",
+  "scope": "TC-004/TC-005 implementation",
+  "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend-v1","head":"7369cbb"},
+  "what": ["implemented i18n infra with de default, en fallback, and app.lang persistence","internationalized core upload/manual-review flow and added DE/EN switch in AppFrame","kept local preview open logic and added localized View tooltip + explicit preview-unavailable error","added targeted tests for AppFrame, StatusBadge, and ManualReviewPage; updated i18n test setup","why: complete plan 20260214-1725 (TC-004 + TC-005)"],
+  "next": {"goal":"continue planned collaborative tasks TC-003 and TC-006 under 20260214-1725-02","owner":"agent-a"}
+}
+```
+
+```json
+{
+  "id": "C-011",
+  "ts": "2026-02-14T20:34:12+01:00",
+  "status": "OPEN",
+  "scope": "upload status message cleanup",
+  "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend-v1","head":"7369cbb"},
+  "what": ["deduplicated upload status banners to one clear message during processing","added explicit review_ready completion hint on upload page","kept timeout resilience and schema compatibility fixes; added tests for BillUploadPage status messaging","why: user reported confusing duplicate notices and missing completion signal"],
+  "next": {"goal":"verify against real backend polling in manual smoke","owner":"agent-a"}
+}
+```
+
+```json
+{
+  "id": "C-012",
+  "ts": "2026-02-14T20:57:03+01:00",
+  "status": "CLOSED",
+  "scope": "plan 20260214-1713 closure",
+  "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend-v1","head":"47ae176"},
+  "what": ["marked parent plan 20260214-1713 as superseded and closed","documented split ownership: 20260214-1725 for TC-004/005 and 20260214-1725-02 for TC-003/006","why: avoid duplicate active plan interpretation and keep plan lineage clear"],
+  "next": {"goal":"continue execution under active child plans only","owner":"agent-a"}
+}
+```
