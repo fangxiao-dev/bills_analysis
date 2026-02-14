@@ -142,12 +142,12 @@ fenced JSON 示例：
 
 
 
-## 5) 近期里程碑
-- M1（当前并行主线）：
-  - Backend：把 tests 中已验证业务逻辑下沉到 `services/integrations`，保持行为不变。
-  - Frontend：基于已冻结 `v1` API schema 同步构建上传/状态查询/校验提交流程页面与调用链路。
-- M2（并行收口）：开放并稳定 API（create batch / query status / submit review / merge），并确保前端调用链路在同版本契约下可联调。
-- M3：前端完成上传-校验-确认-下载闭环，并与后端 merge 结果页对齐。
+## 5) 里程碑（全局视角）
+- **M1: MVP 本地全流程闭环**（当前）：完成上传→提取→人工校验→merge 入账的完整 Web App 流程，前后端联调通过，本地可运行。包含：后端迁移到分层架构、前端基于 `v1` 契约开发调用链路、API 稳定开放、前端闭环与 merge 结果页对齐。
+- **M2: Docker Demo**：将前后端封装为 Docker 容器（docker compose），用户可在本地一键启动试用。
+- **M3: Azure 上线**：基于 Azure 基础设施（SWA + Functions/Container Apps）正式部署上线。
+
+当前里程碑待实现功能点见 `plans/todo_current.md`；未来里程碑功能点见 `plans/todo_future.md`。
 
 ## 5.1 启动与验证最小命令
 - 旧流程（真实业务链）：  
@@ -162,11 +162,25 @@ fenced JSON 示例：
 - 导出 OpenAPI v1 基线：  
   `uv run python scripts/export_openapi_v1.py`
 
-## 5.2 当前里程碑冻结点
+## 5.2 当前里程碑冻结点（M1）
 - `v1` API schema 已冻结（`src/bills_analysis/models/`）。
 - 非兼容变更禁止：不得删除/重命名/改类型已发布字段。
 - 如需变更，必须先版本升级（如 `v1.1`/`v2`）并在 `SESSION_NOTES.md` 标注 breaking change。
-- 并行开发期间，前端默认对接 `v1` 冻结契约；后端在 M1 内部重构不得改变 `v1` 对外字段与语义。
+- 并行开发期间，前端默认对接 `v1` 冻结契约；后端内部重构不得改变 `v1` 对外字段与语义。
+
+## 5.3 Task Tracking
+- `plans/todo_current.md`：当前里程碑任务主表（结构化字段：`task_id/task/status/plan_id/owner/updated_at/note`）。
+- 状态机固定：`UNPLANNED -> PLANNED -> DONE`，并要求 `PLANNED` / `DONE` 必须绑定 `plan_id`。
+- `plans/workplans/`：每个 plan 的三文件上下文（`task_plan/findings/progress`）。
+- `plans/todo_future.md`：未来里程碑的功能点，仅记录参考，暂不实现。
+- 任务状态更新优先通过 `python scripts/plan_tracker.py ...` 维护，减少多人并行编辑冲突。
+- 详细规则：`.claude/rules/planning-with-files.md`
+- 操作手册：`plans/workplans/README.md`
+
+## 5.4 Planning-with-files（索引）
+- 本仓库的 `/planning-with-files` 采用 task-tracker + workplans 机制，支持用户指定范围与 agent 自主选题并行推进。
+- 触发语义、并行约束、命令契约等稳定规则统一维护在：`.claude/rules/planning-with-files.md`。
+- 日常使用命令与示例统一维护在：`plans/workplans/README.md`。
 
 ## 6) 从本地 Excel 过渡到 Lark 的目标工作流
 当前流程：`PDF -> 识别 JSON -> 待校验 Excel -> 人工修正 -> merge Excel`。
