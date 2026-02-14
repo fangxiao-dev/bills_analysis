@@ -10,10 +10,11 @@ def merge_daily(
     monthly_xlsx: Path,
     *,
     out_dir: Path | None = None,
+    append: bool = False,
 ) -> Path:
     """Merge daily validated workbook into monthly workbook."""
 
-    return merge_daily_excel(validated_xlsx, monthly_xlsx, out_dir=out_dir)
+    return merge_daily_excel(validated_xlsx, monthly_xlsx, out_dir=out_dir, append=append)
 
 
 def merge_office(

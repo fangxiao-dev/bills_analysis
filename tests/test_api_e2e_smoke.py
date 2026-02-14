@@ -133,13 +133,16 @@ def _install_mock_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("bills_analysis.integrations.local_backend._extract_office_semantics", fake_extract_office_semantics)
 
 
-def _assert_merge_artifacts_exist(batch_body: dict[str, Any]) -> None:
+def _assert_merge_artifacts_exist(client: Any, batch_id: str, batch_body: dict[str, Any]) -> None:
     """Assert merge output and submitted review artifacts are generated and non-empty."""
 
     merge_output = batch_body["merge_output"]
     merge_summary_path = Path(merge_output["merge_summary_path"])
     validated_excel_path = Path(merge_output["validated_excel_path"])
-    merged_excel_path = Path(merge_output["merged_excel_path"])
+    merged_excel_abs_path = Path(merge_output["merged_excel_abs_path"])
+    output_abs_path = Path(merge_output["output_abs_path"])
+    merged_download_path = str(merge_output["merged_excel_path"])
+    output_download_path = str(merge_output["output_path"])
     review_json_path = Path(batch_body["artifacts"]["review_json_path"])
     submitted_path = review_json_path.parent / "review_rows_submitted.json"
 
@@ -150,8 +153,15 @@ def _assert_merge_artifacts_exist(batch_body: dict[str, Any]) -> None:
 
     assert validated_excel_path.exists()
     assert validated_excel_path.stat().st_size > 0
-    assert merged_excel_path.exists()
-    assert merged_excel_path.stat().st_size > 0
+    assert merged_excel_abs_path.exists()
+    assert merged_excel_abs_path.stat().st_size > 0
+    assert output_abs_path.exists()
+    assert output_abs_path.resolve() == merged_excel_abs_path.resolve()
+    assert merged_download_path == f"/v1/batches/{batch_id}/merge-output/download"
+    assert output_download_path == f"/v1/batches/{batch_id}/merge-output/download"
+    download_res = client.get(merged_download_path)
+    assert download_res.status_code == 200
+    assert "spreadsheetml" in (download_res.headers.get("content-type") or "")
 
     assert review_json_path.exists()
     assert review_json_path.stat().st_size > 0
@@ -179,8 +189,13 @@ def _run_smoke_flow(client: Any, *, batch_type: str) -> None:
         )
     assert upload_res.status_code == 200
     batch_id = upload_res.json()["batch_id"]
+    queued_body = client.get(f"/v1/batches/{batch_id}").json()
+    assert queued_body["inputs"]
+    assert all(item.get("status") in {"queued", "processing"} for item in queued_body["inputs"])
 
-    _wait_for_status(client, batch_id, "review_ready")
+    review_ready_body = _wait_for_status(client, batch_id, "review_ready")
+    assert all(item.get("status") == "extracted" for item in review_ready_body["inputs"])
+    assert all(item.get("error") in {None, ""} for item in review_ready_body["inputs"])
 
     rows_res = client.get(f"/v1/batches/{batch_id}/review-rows")
     assert rows_res.status_code == 200
@@ -227,7 +242,7 @@ def _run_smoke_flow(client: Any, *, batch_type: str) -> None:
     assert merge_res.status_code == 200
 
     merged_body = _wait_for_status(client, batch_id, "merged")
-    _assert_merge_artifacts_exist(merged_body)
+    _assert_merge_artifacts_exist(client, batch_id, merged_body)
 
 
 def test_api_e2e_smoke_daily_chain(monkeypatch: pytest.MonkeyPatch) -> None:

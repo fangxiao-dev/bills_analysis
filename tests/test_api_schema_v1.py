@@ -131,6 +131,8 @@ def test_api_contract_v1_endpoints() -> None:
         assert create_res.headers.get("access-control-allow-origin") == "http://127.0.0.1:5173"
         created = create_res.json()
         assert created["schema_version"] == "v1"
+        assert created["inputs"][0]["status"] == "queued"
+        assert created["inputs"][0]["error"] is None
         batch_id = created["batch_id"]
 
         get_res = client.get(f"/v1/batches/{batch_id}")
@@ -732,6 +734,54 @@ def test_local_backend_merge_builds_non_empty_daily_validated_excel() -> None:
     assert "Umsatz Brutto" in headers
     brutto_col = headers.index("Umsatz Brutto") + 1
     assert merged_ws.cell(row=2, column=brutto_col).value is not None
+
+
+def test_local_backend_daily_merge_creates_missing_monthly_and_supports_append() -> None:
+    """Daily merge should auto-create missing monthly workbook and honor append mode."""
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    missing_monthly = test_root / "missing_daily_monthly.xlsx"
+
+    req = CreateBatchRequest(
+        type="daily",
+        run_date="04/02/2026",
+        inputs=[{"path": str(test_root / "dummy.pdf"), "category": "zbon"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    batch.review_rows = [
+        {
+            "row_id": "row-0001",
+            "category": "zbon",
+            "filename": "zbon.pdf",
+            "result": {"run_date": "04/02/2026", "brutto": "123.45", "netto": "100.00"},
+            "score": {"brutto": 0.95, "netto": 0.95},
+            "preview_path": str(test_root / "preview.pdf"),
+        }
+    ]
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    first_output = asyncio.run(
+        backend.merge_batch(
+            batch,
+            {"mode": "overwrite", "monthly_excel_path": str(missing_monthly)},
+        )
+    )
+    assert missing_monthly.exists()
+    first_merged = load_workbook(Path(first_output["merged_excel_abs_path"])).active
+    assert first_merged.max_row == 2
+
+    second_output = asyncio.run(
+        backend.merge_batch(
+            batch,
+            {"mode": "append", "monthly_excel_path": first_output["merged_excel_abs_path"]},
+        )
+    )
+    second_merged = load_workbook(Path(second_output["merged_excel_abs_path"])).active
+    assert second_merged.max_row == 3
+    assert second_merged.cell(row=2, column=1).value.strftime("%d/%m/%Y") == "04/02/2026"
+    assert second_merged.cell(row=3, column=1).value.strftime("%d/%m/%Y") == "04/02/2026"
 
 
 def _openapi_contract_subset(spec: dict) -> dict:
