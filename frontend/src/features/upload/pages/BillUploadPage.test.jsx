@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { BillUploadPage } from "./BillUploadPage";
@@ -79,5 +79,24 @@ describe("BillUploadPage status messaging", () => {
     });
 
     expect(screen.getByText("Batch processing completed. You can open Manual Review now.")).toBeInTheDocument();
+  });
+
+  it("keeps retry polling icon button enabled while tracking when batch exists", () => {
+    const retryPolling = vi.fn();
+
+    renderPage({
+      flags: { ...buildBaseContext().flags, isBusy: true },
+      actions: { ...buildBaseContext().actions, retryPolling },
+      state: {
+        ...buildBaseContext().state,
+        phase: "tracking",
+        batch: { batch_id: "b1", status: "running" },
+      },
+    });
+
+    const retryBtn = screen.getByRole("button", { name: "Retry Status Poll" });
+    expect(retryBtn).toBeEnabled();
+    fireEvent.click(retryBtn);
+    expect(retryPolling).toHaveBeenCalledTimes(1);
   });
 });

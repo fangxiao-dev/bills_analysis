@@ -22,6 +22,13 @@ export function BillUploadPage() {
     state.batch &&
     (state.batch.status === "review_ready" || state.batch.status === "merging" || state.batch.status === "merged");
 
+  const isRefreshing =
+    state.phase === "creating" ||
+    state.phase === "tracking" ||
+    state.batch?.status === "queued" ||
+    state.batch?.status === "running" ||
+    state.batch?.status === "merging";
+
   const statusMessage = (() => {
     if (!state.batch) {
       return "";
@@ -124,7 +131,7 @@ export function BillUploadPage() {
 
           <div className="mt-4">
             <h2 className="mb-2 text-lg font-semibold">{t("upload.itemsToConfirm")}</h2>
-            <FileQueuePanel files={state.files} onRemove={actions.removeFile} />
+            <FileQueuePanel files={state.files} onRemove={actions.removeFile} batchInputs={state.batch?.inputs} />
           </div>
 
           {state.formError ? (
@@ -142,10 +149,33 @@ export function BillUploadPage() {
             >
               {t("upload.createBatch")}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => actions.retryPolling()} disabled={!state.batch || flags.isBusy}>
-              {t("upload.retryPoll")}
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => actions.retryPolling()}
+              disabled={!state.batch}
+              aria-label={t("upload.retryPoll")}
+              title={t("upload.retryPoll")}
+              className="px-2"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+                className={isRefreshing ? "retry-icon-spin" : ""}
+              >
+                <path
+                  d="M20 12a8 8 0 1 1-2.34-5.66M20 4v6h-6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </Button>
-            <Button type="button" variant="ghost" onClick={() => navigate("/manual-review")} disabled={!canGoReview}>
+            <Button type="button" variant={canGoReview ? "success" : "ghost"} onClick={() => navigate("/manual-review")} disabled={!canGoReview}>
               {t("upload.goManualReview")}
             </Button>
           </div>
@@ -155,10 +185,10 @@ export function BillUploadPage() {
               <AlertBanner message={t("upload.reviewReadyHint", { status: state.batch.status })} />
             </div>
           ) : null}
-          {statusMessage ? <AlertBanner message={statusMessage} /> : null}
+          {statusMessage ? <div className="mt-3"><AlertBanner message={statusMessage} /></div> : null}
 
-          {state.systemError ? <AlertBanner tone="error" message={state.systemError} /> : null}
-          {flags.isDone && !statusMessage ? <AlertBanner message={t("upload.doneHint")} /> : null}
+          {state.systemError ? <div className="mt-3"><AlertBanner tone="error" message={state.systemError} /></div> : null}
+          {flags.isDone && !statusMessage ? <div className="mt-3"><AlertBanner message={t("upload.doneHint")} /></div> : null}
         </section>
       </section>
     </AppFrame>

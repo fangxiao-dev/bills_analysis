@@ -62,6 +62,50 @@ function buildBaseContext() {
 }
 
 describe("ManualReviewPage", () => {
+  it("opens merged result directly from local output_path", async () => {
+    const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        batch: {
+          ...buildBaseContext().state.batch,
+          status: "merged",
+          merge_output: { output_path: "outputs/webapp/x/result.xlsx" },
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Result" }));
+    await screen.findByRole("button", { name: "Open Result" });
+    expect(openMock).toHaveBeenCalled();
+
+    openMock.mockRestore();
+  });
+
+  it("opens merged result when backend provides accessible output_url", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, status: 200 });
+    const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        batch: {
+          ...buildBaseContext().state.batch,
+          status: "merged",
+          merge_output: { output_url: "https://example.com/result.xlsx" },
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Result" }));
+    await screen.findByRole("button", { name: "Open Result" });
+    expect(openMock).toHaveBeenCalledWith("https://example.com/result.xlsx", "_blank", "noopener,noreferrer");
+
+    fetchMock.mockRestore();
+    openMock.mockRestore();
+  });
+
   it("shows single submit button and no merge-status panel", () => {
     renderPage();
     expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();

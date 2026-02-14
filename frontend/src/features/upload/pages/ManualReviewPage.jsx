@@ -168,6 +168,26 @@ export function ManualReviewPage() {
     }
   }, [actions, t]);
 
+  const onOpenMergedResult = useCallback(async () => {
+    // If user selected a local Excel file as merge source, open it directly (like PDF preview).
+    if (selectedLocalFile) {
+      let objectUrl = previewUrlCacheRef.current.get("__merged_result__");
+      if (!objectUrl) {
+        objectUrl = URL.createObjectURL(selectedLocalFile);
+        previewUrlCacheRef.current.set("__merged_result__", objectUrl);
+      }
+      window.open(objectUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const mergedHref = resolveMergedResultHref(state.batch?.merge_output);
+    if (!mergedHref) {
+      setLocalError(t("review.openMergedResultUnavailable"));
+      return;
+    }
+    window.open(mergedHref, "_blank", "noopener,noreferrer");
+  }, [selectedLocalFile, state.batch?.merge_output, t]);
+
   const onSelectLocalExcel = useCallback((event) => {
     const selected = event.target.files?.[0];
     if (!selected) {
@@ -276,7 +296,7 @@ export function ManualReviewPage() {
         <section className="ledger-card p-4">
           <header className="mb-3">
             <h3 className="text-lg font-semibold">{t("review.confirmTitle")}</h3>
-            <p className="mt-1 text-xs text-ledger-smoke">{t("review.confirmDesc")}</p>
+            <p className="mt-1 text-sm text-ledger-smoke">{t("review.confirmDesc")}</p>
           </header>
 
           <div className="source-switch">
@@ -298,7 +318,7 @@ export function ManualReviewPage() {
 
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
-              <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">{t("review.mode")}</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.mode")}</span>
               <select
                 className="review-cell-input"
                 value={effectiveBatchType === "daily" ? "overwrite" : mergeMode}
@@ -312,7 +332,7 @@ export function ManualReviewPage() {
             </label>
 
             <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
-              <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">{t("review.monthlyPath")}</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.monthlyPath")}</span>
               <input
                 type="text"
                 className="review-cell-input"
@@ -326,7 +346,7 @@ export function ManualReviewPage() {
           {monthlyPathSource === SOURCE_LOCAL_FILE ? (
             <div className="mt-3">
               <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
-                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">{t("review.chooseLocalExcel")}</span>
+                <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.chooseLocalExcel")}</span>
                 <input type="file" accept=".xlsx,.xls" onChange={onSelectLocalExcel} />
                 {selectedLocalFileName ? <span className="text-xs text-ledger-smoke">{t("review.selectedFile", { name: selectedLocalFileName })}</span> : null}
               </label>
@@ -336,7 +356,7 @@ export function ManualReviewPage() {
           {monthlyPathSource === SOURCE_LARK_SHEET ? (
             <div className="mt-3">
               <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
-                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">{t("review.larkLink")}</span>
+                <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.larkLink")}</span>
                 <input
                   type="text"
                   className="review-cell-input"
@@ -353,6 +373,15 @@ export function ManualReviewPage() {
             <Button type="button" variant="primary" onClick={() => void onSubmit()} disabled={submitDisabled}>
               {t("common.submit")}
             </Button>
+            {state.batch?.status === "merged" ? (
+              <Button
+                type="button"
+                variant="success"
+                onClick={() => void onOpenMergedResult()}
+              >
+                {t("review.openMergedResult")}
+              </Button>
+            ) : null}
             <Button type="button" variant="ghost" onClick={() => navigate("/")}>
               {t("common.backToUpload")}
             </Button>
@@ -612,6 +641,31 @@ function toPreviewHref(rawPath) {
   }
   const normalized = value.replace(/^\.?[\\/]+/, "").replace(/\\/g, "/");
   return `${API_BASE_URL}/${normalized}`;
+}
+
+/**
+ * Resolve merged result URL from backend merge_output payload.
+ * @param {Record<string, unknown> | null | undefined} mergeOutput
+ */
+function resolveMergedResultHref(mergeOutput) {
+  if (!mergeOutput || typeof mergeOutput !== "object") {
+    return "";
+  }
+
+  const directUrlKeys = ["output_url", "download_url", "url"];
+  for (const key of directUrlKeys) {
+    const value = mergeOutput[key];
+    if (typeof value === "string" && value.trim()) {
+      return toPreviewHref(value);
+    }
+  }
+
+  const outputPath = mergeOutput.output_path;
+  if (typeof outputPath === "string" && outputPath.trim()) {
+    return toPreviewHref(outputPath);
+  }
+
+  return "";
 }
 
 /**

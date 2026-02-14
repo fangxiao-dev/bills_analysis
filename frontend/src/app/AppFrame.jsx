@@ -52,6 +52,13 @@ export function AppFrame({ children }) {
           >
             {t("app.language.en")}
           </button>
+          <button
+            type="button"
+            className={`app-nav-item ${i18n.language === "zh" ? "active" : ""}`}
+            onClick={() => onChangeLanguage("zh")}
+          >
+            {t("app.language.zh")}
+          </button>
         </div>
       </aside>
       <div className="app-main">{children}</div>
