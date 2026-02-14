@@ -39,6 +39,27 @@
 | 前端 inputFileSchema 需同步更新 | `.strict()` 模式下新字段会导致验证失败 |
 | Excel 用下载行为（非预览） | 浏览器原生行为，M1 可接受 |
 
+## Backend Implementation Status (agent-b)
+
+### 已落地（可被前端直接消费）
+- TC-003:
+  - `inputs[]` 已包含 optional:
+    - `status?: "queued" | "processing" | "extracted" | "failed"`
+    - `error?: string | null`
+  - 生命周期行为：
+    - 创建 batch: `queued`
+    - worker 开始处理: `processing`
+    - 处理成功: `extracted`
+    - 处理失败: `failed` + `error`
+- TC-006:
+  - `merge_output` 已填充 `output_path`（指向 merged excel）
+  - 兼容字段 `merged_excel_path` 仍保留
+
+### 前端待消费依赖（请按字段名对接）
+1. 在上传页/轮询中读取 `batch.inputs[].status` 与 `batch.inputs[].error`，替换当前纯 batch-level 推断。
+2. 在 merged 态读取 `batch.merge_output.output_path`，作为“Ergebnis öffnen/anzeigen”按钮目标。
+3. 按后端状态枚举渲染 badge：`queued|processing|extracted|failed`。
+
 ## 后端 Contract 扩展清单
 
 ### 1. `inputs[]` 扩展（TC-003）

@@ -29,14 +29,24 @@
   - same as above
 
 ### Phase 3: Implementation
-- **Status:** pending
-- Next execution owner:
-  - agent-b (backend)
+- **Status:** complete
+- Actions taken:
+  - Updated `src/bills_analysis/integrations/excel_merge_adapter.py`:
+    - daily overwrite now upserts by Datum
+    - daily append mode always appends
+    - missing daily monthly workbook auto-creates from canonical template
+    - daily output rows sorted by Datum asc after merge
+  - Updated `src/bills_analysis/services/merge_service.py` to pass daily append flag.
+  - Updated `src/bills_analysis/integrations/local_backend.py` daily merge path to honor `mode` and allow missing monthly source for auto-template creation.
+  - Added/updated tests:
+    - `tests/test_merge_parity.py`
+    - `tests/test_api_schema_v1.py`
 
 ## Test Results
 | Test | Input | Expected | Actual | Status |
 |---|---|---|---|---|
 | Planning validation | Existing backend code inspection | Decision-complete implementation plan | Completed | ✓ |
+| `uv run pytest tests/test_merge_parity.py tests/test_api_schema_v1.py -q` | TC-001 behavior matrix | overwrite/append/sort/template scenarios pass | 37 passed | ✓ |
 
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |
@@ -46,5 +56,5 @@
 ## Handoff
 - Backend agent should implement per findings + task_plan.
 - On completion:
-  - update TC-001 to DONE in `plans/todo_current.md`
-  - append SESSION_NOTES record with behavior changes and test evidence.
+  - update TC-001 to DONE in `plans/todo_current.md` (done)
+  - append SESSION_NOTES record with behavior changes and test evidence (done)

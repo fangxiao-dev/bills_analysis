@@ -122,3 +122,29 @@
   "risk": ["历史未切换的前端或脚本调用会因 flat payload 被拒绝；需按 v1 canonical shape 迁移"]
 }
 ```
+
+```json
+{
+  "id": "C-010",
+  "ts": "2026-02-14T18:23:00+01:00",
+  "status": "CLOSED",
+  "scope": "TC-001 daily merge overwrite append sort template",
+  "who": {"agent":"agent-b","side":"backend","branch":"feat-backend-v1","head":"4b5284b"},
+  "what": ["实现 daily overwrite=按 Datum upsert（存在覆盖，不存在追加）并支持 append 模式始终追加。","实现 daily 月度文件缺失时自动创建空模板 xlsx（含 canonical daily headers）。","实现 daily merge 后按 Datum 升序排序，确保输出确定性。","补充并通过测试：tests/test_merge_parity.py、tests/test_api_schema_v1.py（覆盖 overwrite/append/sort/template/local backend）。","why: 完成 plan_id=20260214-1616 下 TC-001 的后端交付并提供可执行验证证据。"],
+  "next": {"goal":"TC-001 backend 已收口，等待前端按 mode 启用 daily append 能力（如需要）。","owner":"agent-a"},
+  "risk": ["session_notes.py 当前 argparse 存在重复参数定义，自动日志命令报错；本条按同格式手工补写。"]
+}
+```
+
+```json
+{
+  "id": "C-011",
+  "ts": "2026-02-14T18:41:00+01:00",
+  "status": "OPEN",
+  "scope": "plan 20260214-1725-02 backend delivery for TC-003 TC-006",
+  "who": {"agent":"agent-b","side":"backend","branch":"feat-backend-v1","head":"4b5284b"},
+  "what": ["后端已实现 inputs[].status/error（queued|processing|extracted|failed）并在 worker 生命周期填充。","后端已实现 merge_output.output_path（兼容保留 merged_excel_path）。","已更新 workplan md（task_plan/findings/progress）向前端明确可消费字段与待办。","已更新 todo note：TC-003/TC-006 维持 PLANNED，标记 frontend wiring pending。","why: 按用户要求只推进后端并将前端依赖回写到 plan md。"],
+  "dep": ["frontend: 对接 GET /v1/batches/{id} 的 inputs[].status/error 并展示 per-file status。","frontend: 在 merged 态消费 batch.merge_output.output_path 打开结果文件按钮。"],
+  "next": {"goal":"等待 frontend 完成 UI 消费后进行联调收口。","owner":"agent-a"}
+}
+```

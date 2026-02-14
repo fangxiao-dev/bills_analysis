@@ -73,14 +73,14 @@ inputs[]: {
 - **Status:** complete
 
 ### Phase 2: 前后端对齐
-**阻塞点：需要后端确认 contract 扩展方案。**
+**后端已完成 contract 扩展实现，当前为前端消费阶段。**
 
-- [ ] 将 contract 扩展建议同步给 backend agent（通过 SESSION_NOTES.md dep 字段）
+- [x] 将 contract 扩展建议同步给 backend agent（通过 SESSION_NOTES.md dep 字段）
   - TC-003: `inputs[].status` optional 扩展
   - TC-006: `merge_output.output_path` 填充约定
-- [ ] 等待后端确认可行性和时间线
-- [ ] 如果后端暂不能实现，确认降级方案可接受
-- **Status:** pending
+- [x] 后端确认并落地实现（agent-b）
+- [x] 前端依赖字段确认可用
+- **Status:** complete
 
 ### Phase 3: TC-003 前端实现
 **可先用降级方案开发，后端就绪后切换到真实 per-file status。**
