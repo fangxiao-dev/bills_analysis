@@ -36,6 +36,8 @@ export const INPUT_FILE_CATEGORIES = ["bar", "zbon", "office"];
  * @typedef {Object} InputFile
  * @property {string} path
  * @property {InputFileCategory} [category]
+ * @property {string | null} [status]
+ * @property {unknown | null} [error]
  */
 
 /**

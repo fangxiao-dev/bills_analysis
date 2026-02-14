@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCreateBatchRequest, parseMergeRequest } from "./v1.schema";
+import { parseBatchResponse, parseCreateBatchRequest, parseMergeRequest } from "./v1.schema";
 
 describe("v1 schema contract", () => {
   it("accepts valid create payload", () => {
@@ -47,5 +47,31 @@ describe("v1 schema contract", () => {
 
   it("rejects invalid merge mode", () => {
     expect(() => parseMergeRequest({ mode: "upsert" })).toThrow();
+  });
+
+  it("accepts batch inputs with optional status/error fields", () => {
+    const payload = parseBatchResponse({
+      schema_version: "v1",
+      batch_id: "b-1",
+      type: "daily",
+      status: "running",
+      run_date: "04/02/2026",
+      inputs: [
+        {
+          path: "outputs/webapp/uploads/a.pdf",
+          category: "bar",
+          status: "running",
+          error: null,
+        },
+      ],
+      artifacts: {},
+      review_rows_count: 0,
+      merge_output: {},
+      error: null,
+      created_at: "2026-02-14T12:00:00Z",
+      updated_at: "2026-02-14T12:00:01Z",
+    });
+
+    expect(payload.inputs[0].status).toBe("running");
   });
 });

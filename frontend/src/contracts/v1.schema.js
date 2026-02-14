@@ -9,12 +9,21 @@ const runDatePattern = /^\d{2}\/\d{2}\/\d{4}$/;
 
 const passthroughRecordSchema = z.record(z.string(), z.unknown());
 
-const inputFileSchema = z
+const inputFileRequestSchema = z
   .object({
     path: z.string().min(1),
     category: categorySchema.nullable().optional(),
   })
   .strict();
+
+const inputFileResponseSchema = z
+  .object({
+    path: z.string().min(1),
+    category: categorySchema.nullable().optional(),
+    status: z.string().nullable().optional(),
+    error: z.unknown().nullable().optional(),
+  })
+  .passthrough();
 
 const errorInfoSchema = z
   .object({
@@ -29,7 +38,7 @@ const createBatchSchema = z
     type: batchTypeSchema.optional(),
     batch_type: batchTypeSchema.optional(),
     run_date: z.string().regex(runDatePattern).nullable().optional(),
-    inputs: z.array(inputFileSchema).min(1),
+    inputs: z.array(inputFileRequestSchema).min(1),
     metadata: passthroughRecordSchema.optional(),
   })
   .strict()
@@ -75,7 +84,7 @@ const batchResponseSchema = z
     type: batchTypeSchema,
     status: batchStatusSchema,
     run_date: z.string().nullable().optional(),
-    inputs: z.array(inputFileSchema).optional(),
+    inputs: z.array(inputFileResponseSchema).optional(),
     artifacts: passthroughRecordSchema.optional(),
     review_rows_count: z.number().optional(),
     merge_output: passthroughRecordSchema.optional(),
@@ -191,7 +200,8 @@ export {
   batchTypeSchema,
   batchStatusSchema,
   taskTypeSchema,
-  inputFileSchema,
+  inputFileRequestSchema,
+  inputFileResponseSchema,
   createBatchSchema,
   submitReviewSchema,
   mergeRequestSchema,
