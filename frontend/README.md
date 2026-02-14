@@ -61,3 +61,5 @@ Validation notes:
 - `run_date` follows `DD/MM/YYYY`
 - unknown fields are rejected in runtime schema parsing
 - enums match backend values 1:1
+- review submit payload must use canonical nested rows:
+  - `{ row_id, category, filename, result, score, preview_path? }`

@@ -1,5 +1,23 @@
 /**
+ * Check if a field has low extraction confidence and needs manual review.
+ * Uses the per-field score dict from backend; threshold aligned with backend default (0.5).
+ */
+function isLowConfidence(row, fieldKey) {
+  const score = row.score;
+  if (!score || typeof score !== "object") return false;
+  const DEFAULT_THRESHOLD = 0.5;
+  let val = score[fieldKey];
+  // brutto/netto: if score is -1, fallback to total_tax score
+  if ((fieldKey === "brutto" || fieldKey === "netto") && val === -1) {
+    val = score["total_tax"];
+  }
+  if (val == null) return false;
+  return val < DEFAULT_THRESHOLD;
+}
+
+/**
  * Editable review table for one category.
+ * Low-confidence cells are highlighted with amber border to guide manual review.
  * @param {{
  *  title: string;
  *  description: string;
@@ -43,7 +61,7 @@ export function ReviewCategoryTable({ title, description, rows, columns, onChang
                         type="text"
                         value={row[column.key] ?? ""}
                         onChange={(event) => onChangeCell(row.id, column.key, event.target.value)}
-                        className="review-cell-input"
+                        className={`review-cell-input${isLowConfidence(row, column.key) ? " review-cell-low-confidence" : ""}`}
                         aria-label={`${title}-${column.key}-${row.id}`}
                       />
                     )}

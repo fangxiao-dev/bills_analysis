@@ -17,8 +17,11 @@
 export const DEFAULT_REVIEW_TEXT = JSON.stringify(
   [
     {
+      row_id: "bar:sample.pdf:0",
+      category: "bar",
       filename: "sample.pdf",
       result: { brutto: "1.0" },
+      score: {},
     },
   ],
   null,

@@ -439,6 +439,16 @@ button {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16);
 }
 
+.review-cell-low-confidence {
+  background-color: #fff7ed;
+  border-color: #f59e0b;
+}
+
+.review-cell-low-confidence:focus {
+  border-color: #d97706;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}
+
 .review-view-link {
   color: #2563eb;
   font-size: 0.8rem;

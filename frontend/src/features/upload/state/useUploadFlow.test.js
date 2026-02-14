@@ -55,7 +55,15 @@ describe("useUploadFlow", () => {
 
     let ok;
     await act(async () => {
-      ok = await result.current.actions.submitReviewOnly([{ filename: "invoice.pdf", brutto: "10.5" }]);
+      ok = await result.current.actions.submitReviewOnly([
+        {
+          row_id: "bar:invoice.pdf:0",
+          category: "bar",
+          filename: "invoice.pdf",
+          result: { brutto: "10.5" },
+          score: {},
+        },
+      ]);
     });
     expect(ok).toBe(true);
     expect(result.current.state.phase).toBe("review_ready");
@@ -80,7 +88,15 @@ describe("useUploadFlow", () => {
     });
 
     await act(async () => {
-      await result.current.actions.submitReviewOnly([{ filename: "invoice.pdf", brutto: "10.5" }]);
+      await result.current.actions.submitReviewOnly([
+        {
+          row_id: "bar:invoice.pdf:0",
+          category: "bar",
+          filename: "invoice.pdf",
+          result: { brutto: "10.5" },
+          score: {},
+        },
+      ]);
     });
     let mergeOk;
     await act(async () => {

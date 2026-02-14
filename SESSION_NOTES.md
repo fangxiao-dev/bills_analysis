@@ -108,3 +108,16 @@
   "next": {"goal":"进入 M2 收口：将 smoke 命令纳入发布前 checklist，并与 backend 对齐失败重试策略。","owner":"agent-a"}
 }
 ```
+
+```json
+{
+  "id": "C-009",
+  "ts": "2026-02-14T11:53:38+01:00",
+  "status": "CLOSED",
+  "scope": "frontend close backend C-009 canonical review contract",
+  "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend-v1","head":"ffeac68"},
+  "what": ["清理前端 flat review row 示例：useUploadFlow.test 与 uploadFlowReducer 默认种子均改为 canonical nested shape {row_id,category,filename,result,score}.","完成后端真实 422 复验：对 review_ready batch=1e9112ae-aab6-4ac0-91e7-6f29c9591fb0 提交 flat payload，返回 STATUS=422。","补充前端文档 frontend/README.md：明确 review submit 必须使用 canonical nested payload，避免继续传播 flat 示例。","why: 响应 backend commit 983c157 的 OPEN to frontend 依赖 C-009，完成 canonical contract 收口与可观测验证。"],
+  "next": {"goal":"继续 M2 收口，保持 real smoke 与 422 提示回归稳定。","owner":"agent-a"}
+}
+```
+
