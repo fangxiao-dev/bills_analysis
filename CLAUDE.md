@@ -3,7 +3,7 @@
 ## 1. Project Context
 
 - 项目目标：面向餐馆内部，完成 `daily/office` 两种场景的票据的上传、提取、人工校验、归档预览与最终 merge 入账闭环。
-- 当前阶段：`M1`（并行开发）：Backend 迁移已验证流程到分层架构，Frontend 基于冻结契约推进上传与状态链路。
+- 当前阶段：`M1`（MVP 本地全流程闭环）：前后端并行开发，目标是完成上传→提取→人工校验→merge 入账的完整 Web App 流程，本地可运行。
 - 当前 API Contract： `v1`（Frozen，当前唯一对接基线）。
 
 技术栈：
@@ -37,18 +37,20 @@ Legacy/auxiliary wrappers（按需参考，不作为新功能主入口）：
 
 These boundaries are architectural contracts and must not be blurred.
 
-里程碑方向：
+里程碑（全局视角）：
 
-- M1：后端迁移 tests 已验证逻辑到 `services/integrations`；前端基于冻结 `v1` contract 开发调用链路。
-- M2：稳定开放 API（create batch / query status / submit review / merge）并完成联调。
-- M3：完成上传-校验-确认-下载闭环，merge 结果页对齐。
+- **M1: MVP 本地全流程闭环** — 完成上传→提取→人工校验→merge 入账的完整 Web App 流程，前后端联调通过，本地可运行。包含：后端迁移到分层架构、前端基于 `v1` 契约开发调用链路、API 稳定开放、前端闭环与 merge 结果页对齐。
+- **M2: Docker Demo** — 将前后端封装为 Docker 容器（docker compose），用户可在本地一键启动试用。包含：容器化打包、配置外置、用户使用文档。
+- **M3: Azure 上线** — 基于 Azure 基础设施（SWA + Functions/Container Apps）正式部署上线。包含：CI/CD、域名、监控、安全加固。
 
-Milestone Status（当前 + 整体）：
+当前里程碑待实现功能点见 `plans/todo_current.md`；未来里程碑功能点见 `plans/todo_future.md`。
 
-- As of `2026-02-13`：项目处于 `M1` 并行开发阶段（Backend 迁移 + Frontend 对接冻结契约）。
-- Backend 当前状态：核心流程已在 `tests/` 验证，正在下沉到 `src/bills_analysis/services/` 与 `src/bills_analysis/integrations/`。
-- Frontend 当前状态：已按 `v1` 契约推进上传与状态流转页面，联调以 `v1` 字段语义为准。
-- 整体进度判断：`M1` 进行中，`M2/M3` 尚未进入冻结验收阶段。
+Milestone Status：
+
+- As of `2026-02-14`：项目处于 `M1`（MVP 本地全流程闭环）阶段。
+- Backend：核心流程已在 `tests/` 验证，正在下沉到 `services/integrations`，API 联调已基本跑通 daily/office 双模式。
+- Frontend：已按 `v1` 契约推进上传与状态流转页面，real smoke 已通过 daily/office 双模式 merged 终态。
+- 整体进度判断：`M1` 进行中，剩余功能点见 `plans/todo_current.md`。
 
 ## 4. Collaboration Boundaries
 
@@ -68,26 +70,47 @@ Milestone Status（当前 + 整体）：
 
 核心要点：fenced JSON 记录，> 10 条时建议 `/session-notes-compact` 语义压缩。写入命令 `python scripts/session_notes.py log ...`。
 
-## 7. Commands You Should Prefer
+## 7. Task Tracking
+
+当前里程碑的具体待办功能点通过 `plans/` 目录管理：
+
+- `plans/todo_current.md`：当前里程碑下待实现的功能点（结构化表格），固定字段：`task_id/task/status/plan_id/owner/updated_at/note`。
+- 状态机：`UNPLANNED -> PLANNED -> DONE`（互斥）；`PLANNED` 与 `DONE` 必须绑定 `plan_id`。
+- 任务状态与 plan 绑定优先通过命令维护：`python scripts/plan_tracker.py ...`。
+- `plans/workplans/`：每个 plan 对应三文件：`task_plan.<plan_id>.md`、`findings.<plan_id>.md`、`progress.<plan_id>.md`。
+- `plans/todo_future.md`：未来里程碑的功能点，仅记录参考，暂不实现。
+
+## 8. Planning-with-files Local Customization
+
+当用户希望Agent辅助规划plans时，使用`planning-with-files`这个SKILL。在本仓库采用 task-tracker + workplans 模式，作为多 agent 并行协作的标准入口。
+状态机固定为 `UNPLANNED -> PLANNED -> DONE`，并要求 `PLANNED/DONE` 绑定 `plan_id`。
+短句触发与选择策略（用户指定优先、未指定时 agent 可自主选题）详见规则文件。
+操作命令和目录约定（`plans/workplans/`、`plan_tracker.py`）详见工作手册。
+
+- 规则：`.claude/rules/planning-with-files.md`
+- 操作手册：`plans/workplans/README.md`
+
+## 9. Commands You Should Prefer
 
 - 启动 API：`uv run invoice-web-api`
 - Contract 测试：`uv run pytest tests/test_api_schema_v1.py -q`
 - 导出 OpenAPI v1：`uv run python scripts/export_openapi_v1.py`
 - Frontend 开发：`pnpm dev` / `pnpm test`
 
-## 8. Definition of Done & Safety
+## 10. Definition of Done & Safety
 
 详见 `.claude/rules/dod-and-safety.md`。
 
 核心要点：contract 一致性验证、功能可运行、可观测、不破坏既有流程、新代码有注释、文档按需更新。
 
-## 9. Maintenance of This File
+## 11. Maintenance of This File
 
 本文件是仓库级主协作规范。稳定规则已拆分到 `.claude/rules/*.md`：
 
 - `.claude/rules/collaboration-boundaries.md` — 前后端边界与提交约定
 - `.claude/rules/api-contract.md` — v1 冻结策略与契约优先规则
 - `.claude/rules/session-handoff.md` — SESSION_NOTES 字段规范、命令与压缩策略
+- `.claude/rules/planning-with-files.md` — task-tracker/workplans 触发语义、并行约束与命令契约
 - `.claude/rules/dod-and-safety.md` — 完成标准与安全约束
 
 触发更新条件：

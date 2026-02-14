@@ -1,0 +1,12 @@
+# 当前阶段要完成的功能点
+
+可能会动态增删。该文件由 `python scripts/plan_tracker.py ...` 维护，支持多 agent 并行。
+
+| task_id | task | status | plan_id | owner | updated_at | note |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-001 | 确认功能：daily要支持：1）按datum覆盖已有项目；2）追加新的条目，并且排序；3）如果没有文件，则用自动创建一个xlsx作为空模板（所以得提炼出模板定义） | PLANNED | 20260214-1616 | agent-a | 2026-02-14T16:16:43+01:00 |  |
+| TC-002 | review界面要highlight 带审查的项目（复用） | UNPLANNED |  |  |  |  |
+| TC-003 | upload后的解析进度实时显示，上传界面—每个item加入status状态 | UNPLANNED |  |  |  |  |
+| TC-004 | view 如果是本地的，可否直接用默认浏览器打开本地文件，而不是下载 | UNPLANNED |  |  |  |  |
+| TC-005 | 语言支持德语，且默认 | UNPLANNED |  |  |  |  |
+| TC-006 | merged结果在前端提供打开的链接，放在Submit旁边，等merged后开放下载按钮（要考虑上线后这个merged excel如何处理） | UNPLANNED |  |  |  |  |
