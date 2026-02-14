@@ -153,6 +153,28 @@ def _safe_preview_path(batch_id: str, preview_path: str) -> Path:
     return resolved
 
 
+def _safe_merge_output_path(batch_id: str, merge_output: dict[str, Any]) -> Path:
+    """Resolve merge output file path with strict sandbox and extension checks."""
+
+    raw_path = (
+        merge_output.get("merged_excel_abs_path")
+        or merge_output.get("output_abs_path")
+        or merge_output.get("merged_excel_path")
+        or merge_output.get("output_path")
+    )
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise HTTPException(status_code=404, detail="merge output file not found")
+    resolved = Path(raw_path).resolve()
+    allowed_root = (Path("outputs") / "webapp" / batch_id).resolve()
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="merge output file not found")
+    if resolved.suffix.lower() not in {".xlsx", ".xlsm"}:
+        raise HTTPException(status_code=404, detail="merge output file not found")
+    if not resolved.is_relative_to(allowed_root):
+        raise HTTPException(status_code=404, detail="merge output file not found")
+    return resolved
+
+
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     """Lightweight health endpoint for liveness checks."""
@@ -384,6 +406,19 @@ async def queue_merge(batch_id: str, req: MergeRequest) -> MergeTaskResponse:
         raise HTTPException(status_code=404, detail="batch not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/v1/batches/{batch_id}/merge-output/download")
+async def download_merge_output(batch_id: str) -> FileResponse:
+    """Serve merged Excel output for one batch in local-debug workflow."""
+
+    batch = await container.service.get_batch(batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="batch not found")
+    merge_output = batch.merge_output if isinstance(batch.merge_output, dict) else {}
+    output_path = _safe_merge_output_path(batch_id, merge_output)
+    media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return FileResponse(path=output_path, media_type=media, filename=output_path.name)
 
 
 def run() -> None:
