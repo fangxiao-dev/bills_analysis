@@ -48,7 +48,7 @@ export function createMockUploadClient(options = {}) {
         type: body.type,
         status: "queued",
         run_date: body.run_date,
-        inputs: body.inputs,
+        inputs: body.inputs.map((i) => ({ ...i, status: "queued" })),
         artifacts: {},
         review_rows_count: 0,
         merge_output: {},
@@ -74,11 +74,20 @@ export function createMockUploadClient(options = {}) {
       record.__ticks += 1;
 
       if (record.__mergeRequested) {
-        record.status = record.__ticks > 4 ? "merged" : "merging";
-      } else if (record.__ticks === 1) {
-        record.status = "running";
-      } else if (record.__ticks >= 2) {
-        record.status = "review_ready";
+        if (record.__ticks > 4) {
+          record.status = "merged";
+          record.merge_output = {
+            output_path: "outputs/monthly/current.xlsx",
+            rows_written: record.inputs.length,
+            merge_mode: "overwrite",
+          };
+        } else {
+          record.status = "merging";
+        }
+      } else {
+        advanceInputStatuses(record);
+        const allExtracted = record.inputs.every((i) => i.status === "extracted");
+        record.status = allExtracted ? "review_ready" : "running";
       }
 
       record.updated_at = new Date().toISOString();
@@ -211,4 +220,22 @@ function fileNameFromPath(path) {
   const normalized = String(path || "").replace(/\\/g, "/");
   const parts = normalized.split("/");
   return parts[parts.length - 1] || "unknown.pdf";
+}
+
+/**
+ * Advance per-file status one step at a time to simulate progressive extraction.
+ * Each poll tick advances ONE file: queued -> processing -> extracted.
+ * @param {{ inputs: Array<Record<string, unknown>> }} record
+ */
+function advanceInputStatuses(record) {
+  for (const input of record.inputs) {
+    if (!input.status || input.status === "queued") {
+      input.status = "processing";
+      return;
+    }
+    if (input.status === "processing") {
+      input.status = "extracted";
+      return;
+    }
+  }
 }

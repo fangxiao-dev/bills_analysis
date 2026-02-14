@@ -128,7 +128,7 @@ button {
 
 .app-topbar p {
   margin: 0.28rem 0 0;
-  font-size: 0.82rem;
+  font-size: 0.875rem;
   color: var(--ledger-smoke);
 }
 
@@ -275,14 +275,14 @@ button {
 .queue-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.82rem;
+  font-size: 0.875rem;
 }
 
 .queue-table th {
   text-align: left;
   color: #4f637d;
   font-weight: 600;
-  font-size: 0.74rem;
+  font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 0.5rem 0.55rem;
@@ -347,7 +347,7 @@ button {
   align-items: center;
   padding: 0.48rem 0.6rem;
   border-bottom: 1px solid #edf2fa;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
 }
 
 .step-row:last-child {
@@ -410,6 +410,7 @@ button {
   border: none;
   border-right: 1px solid #d5deee;
   background: transparent;
+  font-size: 0.875rem;
   color: #496180;
   padding: 0.44rem 0.75rem;
   font-size: 0.78rem;
@@ -428,12 +429,12 @@ button {
 
 .review-cell-input {
   width: 100%;
-  min-width: 120px;
+  min-width: 130px;
   border: 1px solid #dce5f3;
   border-radius: 0.45rem;
   background: #ffffff;
-  padding: 0.32rem 0.45rem;
-  font-size: 0.78rem;
+  padding: 0.38rem 0.5rem;
+  font-size: 0.875rem;
   color: var(--ledger-ink);
   outline: none;
 }
@@ -455,13 +456,27 @@ button {
 
 .review-view-link {
   color: #2563eb;
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   font-weight: 600;
   text-decoration: none;
 }
 
 .review-view-link:hover {
   text-decoration: underline;
+}
+
+.retry-icon-spin {
+  transform-origin: center;
+  animation: retry-rotate 1s linear infinite;
+}
+
+@keyframes retry-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 1200px) {

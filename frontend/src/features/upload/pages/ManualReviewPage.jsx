@@ -9,7 +9,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { ReviewCategoryTable } from "../components/ReviewCategoryTable";
 import { useUploadFlowContext } from "../state/UploadFlowContext";
 
-const DEFAULT_MONTHLY_EXCEL_PATH = "outputs/monthly/current.xlsx";
+const DEFAULT_MONTHLY_EXCEL_PATH = "";
 const SOURCE_LOCAL_FILE = "local_file";
 const SOURCE_LARK_SHEET = "lark_sheet";
 
@@ -111,16 +111,12 @@ export function ManualReviewPage() {
 
   const hasBatch = Boolean(state.batch?.batch_id);
   const hasSubmittedReview = state.reviewSubmitted || (state.batch?.review_rows_count || 0) > 0;
-  const submitDisabled = !hasBatch || state.batch?.status !== "review_ready" || flags.isBusy || !totalRows || !monthlyPath.trim();
+  const hasMergeSource = monthlyPathSource === SOURCE_LOCAL_FILE ? Boolean(selectedLocalFile) : Boolean(larkSheetLink.trim() || monthlyPath.trim());
+  const submitDisabled = !hasBatch || state.batch?.status !== "review_ready" || flags.isBusy || !totalRows || !hasMergeSource;
   const showRetryMerge = state.batch?.status === "failed" && hasSubmittedReview;
 
   const onSubmit = useCallback(async () => {
     setLocalError("");
-
-    if (!monthlyPath.trim()) {
-      setLocalError(t("review.invalidPath"));
-      return;
-    }
 
     if (monthlyPathSource === SOURCE_LARK_SHEET && !isValidHttpUrl(larkSheetLink)) {
       setLocalError(t("review.invalidLarkUrl"));
@@ -142,7 +138,7 @@ export function ManualReviewPage() {
     let resolvedMonthlyPath = monthlyPath.trim();
     if (monthlyPathSource === SOURCE_LOCAL_FILE && selectedLocalFile) {
       const uploadedPath = await actions.resolveMonthlyPathFromLocal(selectedLocalFile);
-      if (!uploadedPath) {
+      if (!uploadedPath || isNonRealPath(uploadedPath)) {
         setLocalError(t("review.localUploadFailed"));
         return;
       }
@@ -169,35 +165,32 @@ export function ManualReviewPage() {
   }, [actions, t]);
 
   const onOpenMergedResult = useCallback(async () => {
-    // If user selected a local Excel file as merge source, open it directly (like PDF preview).
-    if (selectedLocalFile) {
-      let objectUrl = previewUrlCacheRef.current.get("__merged_result__");
-      if (!objectUrl) {
-        objectUrl = URL.createObjectURL(selectedLocalFile);
-        previewUrlCacheRef.current.set("__merged_result__", objectUrl);
-      }
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      return;
-    }
+    setLocalError("");
 
-    const mergedHref = resolveMergedResultHref(state.batch?.merge_output);
+    const mergedHref = resolveMergedResultHref(state.batch);
     if (!mergedHref) {
       setLocalError(t("review.openMergedResultUnavailable"));
       return;
     }
     window.open(mergedHref, "_blank", "noopener,noreferrer");
-  }, [selectedLocalFile, state.batch?.merge_output, t]);
+  }, [state.batch, t]);
 
-  const onSelectLocalExcel = useCallback((event) => {
+  const onSelectLocalExcel = useCallback(async (event) => {
     const selected = event.target.files?.[0];
     if (!selected) {
       return;
     }
+    setLocalError("");
     setSelectedLocalFile(selected);
     setSelectedLocalFileName(selected.name);
-    setMonthlyPath(`local://${selected.name}`);
+    setMonthlyPath("");
     setMonthlyPathSource(SOURCE_LOCAL_FILE);
-  }, []);
+
+    const resolvedPath = await actions.resolveMonthlyPathFromLocal(selected);
+    if (resolvedPath && !isNonRealPath(resolvedPath)) {
+      setMonthlyPath(resolvedPath);
+    }
+  }, [actions]);
 
   const onViewRow = useCallback(
     (row) => {
@@ -335,10 +328,10 @@ export function ManualReviewPage() {
               <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.monthlyPath")}</span>
               <input
                 type="text"
-                className="review-cell-input"
+                className={`review-cell-input ${monthlyPath.trim() ? "" : "text-slate-400"}`}
                 placeholder={DEFAULT_MONTHLY_EXCEL_PATH}
                 value={monthlyPath}
-                onChange={(event) => setMonthlyPath(event.target.value)}
+                readOnly
               />
             </label>
           </div>
@@ -644,10 +637,11 @@ function toPreviewHref(rawPath) {
 }
 
 /**
- * Resolve merged result URL from backend merge_output payload.
- * @param {Record<string, unknown> | null | undefined} mergeOutput
+ * Resolve merged result URL from backend batch payload.
+ * @param {Record<string, unknown> | null | undefined} batch
  */
-function resolveMergedResultHref(mergeOutput) {
+function resolveMergedResultHref(batch) {
+  const mergeOutput = batch?.merge_output;
   if (!mergeOutput || typeof mergeOutput !== "object") {
     return "";
   }
@@ -660,12 +654,98 @@ function resolveMergedResultHref(mergeOutput) {
     }
   }
 
+  const absolutePathKeys = ["merged_excel_path", "output_abs_path", "absolute_path", "abs_path", "full_path"];
+  for (const key of absolutePathKeys) {
+    const value = mergeOutput[key];
+    if (typeof value === "string" && value.trim()) {
+      return toPreviewHref(value);
+    }
+  }
+
   const outputPath = mergeOutput.output_path;
   if (typeof outputPath === "string" && outputPath.trim()) {
-    return toPreviewHref(outputPath);
+    if (isAbsolutePath(outputPath)) {
+      return toPreviewHref(outputPath);
+    }
+    const resolvedAbsolute = resolveAbsolutePathFromBatch(outputPath, batch);
+    if (resolvedAbsolute) {
+      return toPreviewHref(resolvedAbsolute);
+    }
   }
 
   return "";
+}
+
+/**
+ * Resolve one relative output path to local absolute path using known absolute hints.
+ * @param {string} relativePath
+ * @param {Record<string, unknown> | null | undefined} batch
+ */
+function resolveAbsolutePathFromBatch(relativePath, batch) {
+  const normalizedRelative = String(relativePath || "").trim();
+  if (!normalizedRelative || isAbsolutePath(normalizedRelative)) {
+    return "";
+  }
+
+  const normalizedRelativeSlash = normalizedRelative.replace(/\\/g, "/").replace(/^\/+/, "");
+  const outputAnchor = "/outputs/";
+  const anchorIndex = normalizedRelativeSlash.indexOf(outputAnchor.slice(1));
+  if (anchorIndex < 0) {
+    return "";
+  }
+
+  const tailFromOutputs = normalizedRelativeSlash.slice(anchorIndex + 1);
+  const absoluteInputs = Array.isArray(batch?.inputs)
+    ? batch.inputs
+        .map((item) => (typeof item?.path === "string" ? item.path.trim() : ""))
+        .filter((value) => value && isAbsolutePath(value))
+    : [];
+
+  for (const absoluteInput of absoluteInputs) {
+    const inputSlash = absoluteInput.replace(/\\/g, "/");
+    const outputsIndex = inputSlash.toLowerCase().indexOf(outputAnchor);
+    if (outputsIndex < 0) {
+      continue;
+    }
+    const prefix = inputSlash.slice(0, outputsIndex);
+    if (!prefix) {
+      continue;
+    }
+    const useBackslash = /^[a-zA-Z]:\//.test(inputSlash);
+    const candidate = useBackslash ? `${prefix}/${tailFromOutputs}`.replace(/\//g, "\\") : `${prefix}/${tailFromOutputs}`;
+    if (isAbsolutePath(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
+/**
+ * Check whether a path is absolute (URL, Windows absolute, Unix absolute, or file URL).
+ * @param {string} rawPath
+ */
+function isAbsolutePath(rawPath) {
+  const value = String(rawPath || "").trim();
+  if (!value) {
+    return false;
+  }
+  if (/^https?:\/\//i.test(value) || /^file:\/\//i.test(value)) {
+    return true;
+  }
+  if (/^[a-zA-Z]:\\/.test(value)) {
+    return true;
+  }
+  return value.startsWith("/");
+}
+
+/**
+ * Check whether a returned path is placeholder/mock instead of real backend path.
+ * @param {string | null | undefined} rawPath
+ */
+function isNonRealPath(rawPath) {
+  const value = String(rawPath || "").trim().toLowerCase();
+  return !value || value.startsWith("local://") || value.startsWith("mock://");
 }
 
 /**

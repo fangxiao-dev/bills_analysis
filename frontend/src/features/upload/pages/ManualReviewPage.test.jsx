@@ -8,6 +8,14 @@ vi.mock("../state/UploadFlowContext", () => ({
   useUploadFlowContext: vi.fn(),
 }));
 
+// jsdom doesn't provide URL.createObjectURL / revokeObjectURL
+if (typeof URL.createObjectURL !== "function") {
+  URL.createObjectURL = vi.fn(() => "blob:stub");
+}
+if (typeof URL.revokeObjectURL !== "function") {
+  URL.revokeObjectURL = vi.fn();
+}
+
 const mockContext = useUploadFlowContext;
 
 /**
@@ -38,7 +46,7 @@ function buildBaseContext() {
       submitReviewOnly: vi.fn(async () => true),
       queueMergeOnly: vi.fn(async () => true),
       fetchReviewRows: vi.fn(async () => []),
-      resolveMonthlyPathFromLocal: vi.fn(async (file) => `local://${file.name}`),
+      resolveMonthlyPathFromLocal: vi.fn(async () => "D:\\merge\\monthly.xlsx"),
       retryMerge: vi.fn(async () => true),
     },
     state: {
@@ -62,7 +70,7 @@ function buildBaseContext() {
 }
 
 describe("ManualReviewPage", () => {
-  it("opens merged result directly from local output_path", async () => {
+  it("opens merged result from absolute output_path", async () => {
     const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
 
     renderPage({
@@ -71,20 +79,73 @@ describe("ManualReviewPage", () => {
         batch: {
           ...buildBaseContext().state.batch,
           status: "merged",
+          merge_output: { output_path: "D:\\outputs\\result.xlsx" },
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Result" }));
+    expect(openMock).toHaveBeenCalled();
+    openMock.mockRestore();
+  });
+
+  it("opens merged result from merged_excel_path", async () => {
+    const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        batch: {
+          ...buildBaseContext().state.batch,
+          status: "merged",
+          merge_output: { merged_excel_path: "D:\\outputs\\full_result.xlsx" },
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Result" }));
+    expect(openMock).toHaveBeenCalled();
+    openMock.mockRestore();
+  });
+
+  it("opens relative output_path by resolving absolute prefix from batch inputs", async () => {
+    const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        batch: {
+          ...buildBaseContext().state.batch,
+          status: "merged",
+          inputs: [{ path: "D:\\CodeSpace\\prj_rechnung\\bills__frontend\\outputs\\webapp\\uploads\\x\\bar\\01.pdf" }],
           merge_output: { output_path: "outputs/webapp/x/result.xlsx" },
         },
       },
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Open Result" }));
-    await screen.findByRole("button", { name: "Open Result" });
     expect(openMock).toHaveBeenCalled();
-
     openMock.mockRestore();
   });
 
-  it("opens merged result when backend provides accessible output_url", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, status: 200 });
+  it("shows unavailable message when merge result path is relative without absolute hints", async () => {
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        batch: {
+          ...buildBaseContext().state.batch,
+          status: "merged",
+          inputs: [{ path: "outputs/webapp/uploads/x/zbon/01.pdf" }],
+          merge_output: { output_path: "outputs/webapp/x/result.xlsx" },
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Result" }));
+    await screen.findByText(/Merged result link is unavailable/i);
+  });
+
+  it("opens merged result when backend provides output_url", async () => {
     const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
 
     renderPage({
@@ -99,16 +160,13 @@ describe("ManualReviewPage", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Open Result" }));
-    await screen.findByRole("button", { name: "Open Result" });
     expect(openMock).toHaveBeenCalledWith("https://example.com/result.xlsx", "_blank", "noopener,noreferrer");
-
-    fetchMock.mockRestore();
     openMock.mockRestore();
   });
 
-  it("shows single submit button and no merge-status panel", () => {
+  it("keeps submit disabled before merge source is selected", () => {
     renderPage();
-    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
     expect(screen.queryByText("Merge Status")).not.toBeInTheDocument();
   });
 
@@ -164,7 +222,7 @@ describe("ManualReviewPage", () => {
     expect(screen.getByRole("button", { name: "from Lark" })).toBeInTheDocument();
   });
 
-  it("sets monthly path to local://filename after selecting local excel", () => {
+  it("sets pending merge path to resolved absolute path after selecting local excel", async () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: "from Local" }));
 
@@ -172,7 +230,7 @@ describe("ManualReviewPage", () => {
     const file = new File(["excel"], "monthly.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     fireEvent.change(fileInput, { target: { files: [file] } });
 
-    expect(screen.getByDisplayValue("local://monthly.xlsx")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("D:\\merge\\monthly.xlsx")).toBeInTheDocument();
   });
 
   it("renders backend validation message from systemError", () => {

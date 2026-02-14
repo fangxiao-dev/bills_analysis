@@ -24,7 +24,7 @@ export function ReviewCategoryTable({ title, description, rows, columns, onChang
     <section className="ledger-card p-4">
       <header className="mb-3">
         <h3 className="text-lg font-semibold">{title}</h3>
-        <p className="mt-1 text-xs text-ledger-smoke">{description}</p>
+        <p className="mt-1 text-sm text-ledger-smoke">{description}</p>
       </header>
 
       <div className="overflow-x-auto rounded-md border border-ledger-line bg-white">
