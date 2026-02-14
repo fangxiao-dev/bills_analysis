@@ -84,4 +84,29 @@ describe("ReviewCategoryTable low-confidence highlight", () => {
     expect(bruttoInput.className).toContain("review-cell-low-confidence");
     expect(nettoInput.className).toContain("review-cell-low-confidence");
   });
+
+  it("adds row highlight class when any editable field is low-confidence", () => {
+    const rows = [
+      {
+        id: "row-4",
+        filename: "c.pdf",
+        brutto: "20.00",
+        netto: "16.80",
+        score: { brutto: 0.4, netto: 0.95 },
+      },
+    ];
+
+    const { container } = render(
+      <ReviewCategoryTable
+        title="BAR"
+        description="test"
+        rows={rows}
+        columns={columns}
+        onChangeCell={vi.fn()}
+      />
+    );
+
+    const tr = container.querySelector("tbody tr");
+    expect(tr?.className).toContain("review-row-needs-review");
+  });
 });

@@ -141,4 +141,35 @@ describe("ManualReviewPage", () => {
 
     expect(screen.getByText("body.rows.0.result.brutto: Field required")).toBeInTheDocument();
   });
+
+  it("highlights low-confidence review cells from backend review rows", () => {
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        reviewRows: [
+          {
+            row_id: "bar:invoice-1",
+            category: "bar",
+            filename: "invoice-1.pdf",
+            result: {
+              store_name: "Store A",
+              brutto: "10.00",
+              netto: "8.40",
+              run_date: "10/02/2026",
+            },
+            score: {
+              brutto: 0.2,
+              netto: 0.9,
+            },
+          },
+        ],
+      },
+    });
+
+    const bruttoInput = screen.getByLabelText("BAR Review Items-brutto-bar:invoice-1");
+    const nettoInput = screen.getByLabelText("BAR Review Items-netto-bar:invoice-1");
+
+    expect(bruttoInput.className).toContain("review-cell-low-confidence");
+    expect(nettoInput.className).not.toContain("review-cell-low-confidence");
+  });
 });
