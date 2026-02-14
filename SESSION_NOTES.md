@@ -4,7 +4,7 @@
 {
   "id": "C-001",
   "ts": "2026-02-13T22:19:05+01:00",
-  "status": "OPEN",
+  "status": "CLOSED",
   "scope": "frontend m2 daily integration stabilization",
   "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend-v1","head":"aa61901"},
   "what": ["已对齐 ManualReview 提交 payload，切换为 canonical row shape（nested result/score + preview_path）以保证 backend merge compatibility。","已调整 useUploadFlow hook tests，采用 act-safe state updates 与 polling-aware 断言，适配 backend contract changes。","why: Daily 上传到 review 再到 merge（Upload->Review->Merge）主链路已满足本地联调语义，并对齐 v1 strict validation。"],
@@ -32,7 +32,7 @@
 {
   "id": "C-003",
   "ts": "2026-02-13T23:27:56+01:00",
-  "status": "OPEN",
+  "status": "CLOSED",
   "scope": "frontend m1.1 real smoke + validation observability",
   "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend-v1","head":"642ce97"},
   "what": ["增强 toErrorMessage，支持 FastAPI 422 detail 的 string/object/list 解析，输出字段级可读错误。","新增回归测试：http/uploadClient.real/useUploadFlow/ManualReviewPage，覆盖 422 detail 列表场景与 UI 错误展示。","新增 real API smoke 脚本 pnpm smoke:real，覆盖 daily(overwrite) + office(append/overwrite) 链路并强制 canonical nested review payload。","why: 按 M1 收口要求提升联调可观测性并固化回归；确保 review 失败时前端可直接定位字段错误。"],
@@ -46,7 +46,7 @@
 {
   "id": "C-004",
   "ts": "2026-02-13T23:53:11+01:00",
-  "status": "OPEN",
+  "status": "CLOSED",
   "scope": "frontend real smoke failure triage",
   "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend-v1","head":"642ce97"},
   "what": ["修复 smoke 脚本轮询策略：新增状态停滞检测、周期日志、failed 终态快速失败，避免长时间重复 GET 造成假死观感。","定位失败根因：三条链路均在 review_ready 前进入 failed，后端返回 DI InvalidContent（占位 PDF 文件损坏/格式不支持）。","新增真实文件输入能力：支持 SMOKE_DAILY_ZBON_FILE/SMOKE_DAILY_BAR_FILE/SMOKE_OFFICE_APPEND_FILE/SMOKE_OFFICE_OVERWRITE_FILE，默认无配置时仍使用占位 PDF 并显式打印提示。","why: 联调目标是可解释失败而非盲等；当前阻塞并非前端循环，而是测试输入无效。"],
@@ -60,7 +60,7 @@
 {
   "id": "C-005",
   "ts": "2026-02-14T00:16:40+01:00",
-  "status": "OPEN",
+  "status": "CLOSED",
   "scope": "frontend real smoke with b-q-z samples",
   "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend-v1","head":"642ce97"},
   "what": ["使用真实样本完成三条链路 smoke：daily(z+b)、office-append(q)、office-overwrite(q)。","三条链路均成功到达 review_ready，并完成 canonical nested review payload 提交与 merge task 入队。","失败点统一在 merge 执行阶段，batch error 为 monthly_excel_path not found: outputs\\\\monthly\\\\current.xlsx。","why: 验证前端主调用链路与 v1 契约已可联调；当前阻塞是后端 merge 输入文件路径不存在。"],
@@ -74,7 +74,7 @@
 {
   "id": "C-006",
   "ts": "2026-02-14T00:21:56+01:00",
-  "status": "OPEN",
+  "status": "CLOSED",
   "scope": "frontend smoke re-run with project data excel",
   "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend-v1","head":"642ce97"},
   "what": ["smoke 脚本支持 SMOKE_MONTHLY_EXCEL_PATH，并验证 monthly 路径使用绝对路径后可被后端识别。","office append/overwrite 两条链路均完成 merged（batch: 2e293871-41ca-46ef-9bb8-856c37ccd56b / 5414652d-3718-4e55-967c-2bc4711c843e）。","daily 链路在 merge 失败，后端错误为 Datum not found in monthly Excel: 14/02/2026（batch: d3f1fb9a-489b-4ef1-bb0b-ab4bf3ae5ab2）。","why: 前端调用链路与 canonical review payload 已联通；当前唯一阻塞是 daily 数据日期与 monthly 样本不匹配。"],
@@ -88,7 +88,7 @@
 {
   "id": "C-007",
   "ts": "2026-02-14T10:22:19+01:00",
-  "status": "OPEN",
+  "status": "CLOSED",
   "scope": "frontend smoke mode-specific excel routing fix",
   "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend-v1","head":"642ce97"},
   "what": ["修复 smoke merge 路由逻辑：daily 场景使用 daily excel，office 场景使用 monthly excel，不再共用单一路径。","新增环境变量 SMOKE_DAILY_EXCEL_PATH 与 SMOKE_OFFICE_EXCEL_PATH，并将默认值改为仓库 data 目录的绝对路径（避免后端 cwd 差异导致路径找不到）。","更新 smoke 日志，按 case 输出实际 merge_excel 路径，便于排障。","why: 用户指出 daily 与 office 是两套模式，原联调脚本将 monthly 路径错误用于 daily。"],
@@ -101,7 +101,7 @@
 {
   "id": "C-008",
   "ts": "2026-02-14T10:25:32+01:00",
-  "status": "OPEN",
+  "status": "CLOSED",
   "scope": "frontend smoke final pass with split excel modes",
   "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend-v1","head":"642ce97"},
   "what": ["按场景分流 merge excel 后完成 real smoke 全量通过：daily 使用 data/daily_excel_sample.xlsx；office 使用 data/monthly_excel_sample.xlsx。","daily-overwrite merged（batch=6c2d4360-3982-476f-9a74-4459601e8b5f, task=12a4f1ac-8593-479f-a485-c060c8ff07f9）。","office-append merged（batch=405b732a-0cd2-4846-88c0-93210d458a50, task=984d736c-1886-45ae-8465-c916e284d59b）; office-overwrite merged（batch=36d2d42c-854e-4ec5-bd72-41d3a87e43f3, task=e7a1c23d-c840-40f0-b2d3-5ba9dc54aafa）。","why: 验证前端 v1 调用链路在 daily/office 双模式下均可闭环到 merged 终态。"],
