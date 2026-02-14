@@ -165,6 +165,7 @@ describe("useUploadFlow", () => {
 
     const { result } = renderHook(() => useUploadFlow({ client }));
     act(() => {
+      result.current.actions.setRunDate("10/02/2026");
       result.current.actions.addFiles([new File(["zbon"], "zbon.pdf", { type: "application/pdf" })], "zbon");
     });
     let ok;
@@ -242,5 +243,52 @@ describe("useUploadFlow", () => {
 
     expect(ok).toBe(false);
     expect(result.current.state.systemError).toContain("body.rows.0.result.brutto: Field required");
+  });
+
+  it("recovers batch after create upload timeout by listing recent batches", async () => {
+    const nowIso = new Date().toISOString();
+    let recoveredBatch = null;
+
+    const client = {
+      mode: "real",
+      uploadFiles: vi.fn(),
+      createBatchUpload: vi.fn(async () => {
+        throw new AppHttpError("Request timed out.");
+      }),
+      createBatch: vi.fn(),
+      getBatch: vi.fn(async () => recoveredBatch),
+      listBatches: vi.fn(async () => ({ schema_version: "v1", total: 1, items: [recoveredBatch] })),
+      submitReview: vi.fn(),
+      queueMerge: vi.fn(),
+    };
+
+    const { result } = renderHook(() => useUploadFlow({ client }));
+    act(() => {
+      recoveredBatch = {
+        schema_version: "v1",
+        batch_id: "b-recovered",
+        type: "daily",
+        status: "queued",
+        run_date: result.current.state.runDate,
+        inputs: [{ path: "outputs/webapp/uploads/x/zbon/01_zbon.pdf", category: "zbon" }],
+        artifacts: {},
+        review_rows_count: 0,
+        merge_output: {},
+        error: null,
+        created_at: nowIso,
+        updated_at: nowIso,
+      };
+      result.current.actions.addFiles([new File(["zbon"], "zbon.pdf", { type: "application/pdf" })], "zbon");
+    });
+
+    let ok;
+    await act(async () => {
+      ok = await result.current.actions.submitBatch();
+    });
+
+    expect(ok).toBe(true);
+    expect(client.listBatches).toHaveBeenCalled();
+    expect(result.current.state.batch?.batch_id).toBe("b-recovered");
+    expect(result.current.state.phase).toBe("tracking");
   });
 });

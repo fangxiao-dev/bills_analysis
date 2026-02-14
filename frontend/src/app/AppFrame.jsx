@@ -1,10 +1,12 @@
 import { NavLink } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { LANGUAGE_KEY } from "../i18n";
 
 const navItems = [
-  { label: "Upload Management", to: "/" },
-  { label: "Manual Review", to: "/manual-review" },
-  { label: "Archive", to: "/archive" },
-  { label: "Settings", to: "/settings" },
+  { labelKey: "app.nav.upload", to: "/" },
+  { labelKey: "app.nav.review", to: "/manual-review" },
+  { labelKey: "app.nav.archive", to: "/archive" },
+  { labelKey: "app.nav.settings", to: "/settings" },
 ];
 
 /**
@@ -12,6 +14,15 @@ const navItems = [
  * @param {{ children: import("react").ReactNode }} props
  */
 export function AppFrame({ children }) {
+  const { t, i18n } = useTranslation();
+
+  const onChangeLanguage = (nextLanguage) => {
+    void i18n.changeLanguage(nextLanguage);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LANGUAGE_KEY, nextLanguage);
+    }
+  };
+
   return (
     <main className="app-layout">
       <aside className="app-sidebar">
@@ -22,10 +33,26 @@ export function AppFrame({ children }) {
         <nav className="app-nav">
           {navItems.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => `app-nav-item ${isActive ? "active" : ""}`}>
-              {item.label}
+              {t(item.labelKey)}
             </NavLink>
           ))}
         </nav>
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            className={`app-nav-item ${i18n.language === "de" ? "active" : ""}`}
+            onClick={() => onChangeLanguage("de")}
+          >
+            {t("app.language.de")}
+          </button>
+          <button
+            type="button"
+            className={`app-nav-item ${i18n.language === "en" ? "active" : ""}`}
+            onClick={() => onChangeLanguage("en")}
+          >
+            {t("app.language.en")}
+          </button>
+        </div>
       </aside>
       <div className="app-main">{children}</div>
     </main>

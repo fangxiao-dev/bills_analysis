@@ -172,4 +172,44 @@ describe("ManualReviewPage", () => {
     expect(bruttoInput.className).toContain("review-cell-low-confidence");
     expect(nettoInput.className).not.toContain("review-cell-low-confidence");
   });
+
+  it("shows localized tooltip on view action", () => {
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        reviewRows: [
+          {
+            row_id: "bar:invoice-2",
+            category: "bar",
+            filename: "invoice-2.pdf",
+            result: { store_name: "Store", brutto: "10.00", netto: "8.40", run_date: "10/02/2026" },
+            score: {},
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByRole("link", { name: "View" })).toHaveAttribute("title", "Open in new tab");
+  });
+
+  it("shows detailed localized preview-unavailable message", () => {
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        files: [],
+        reviewRows: [
+          {
+            row_id: "bar:no-preview",
+            category: "bar",
+            filename: "x.pdf",
+            result: { store_name: "Store", brutto: "10.00", netto: "8.40", run_date: "10/02/2026" },
+            score: {},
+          },
+        ],
+      },
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "View" }));
+    expect(screen.getByText("Preview is unavailable for this row: missing preview URL/path and local file.")).toBeInTheDocument();
+  });
 });

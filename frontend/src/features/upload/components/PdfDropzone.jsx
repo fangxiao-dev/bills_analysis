@@ -1,5 +1,6 @@
-﻿import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "../../../shared/ui/Button";
+import { useTranslation } from "react-i18next";
 
 /**
  * PDF drag-and-drop uploader with strict file type filtering.
@@ -15,13 +16,18 @@ import { Button } from "../../../shared/ui/Button";
 export function PdfDropzone({
   onFilesAdded,
   disabled = false,
-  title = "Drop PDFs here or browse from local disk.",
-  description = "Only .pdf files are accepted for M1.",
-  buttonText = "Choose PDF Files",
+  title,
+  description,
+  buttonText,
   allowMultiple = true,
 }) {
+  const { t } = useTranslation();
   const inputRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  const resolvedTitle = title || t("upload.dropzoneDefaultTitle");
+  const resolvedDescription = description || t("upload.dropzoneDefaultDesc");
+  const resolvedButtonText = buttonText || t("upload.dropzoneChoose");
 
   const className = useMemo(
     () => `dropzone p-4 ${isDragging ? "dropzone-active" : ""} ${disabled ? "opacity-60" : ""}`,
@@ -57,10 +63,10 @@ export function PdfDropzone({
         className="flex min-h-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-transparent p-4 text-center"
       >
         <div className="mb-1 grid h-10 w-10 place-items-center rounded-full bg-blue-100 text-lg text-blue-700">↑</div>
-        <p className="text-sm font-semibold text-ledger-ink">{title}</p>
-        <p className="max-w-md text-xs text-ledger-smoke">{description}</p>
+        <p className="text-sm font-semibold text-ledger-ink">{resolvedTitle}</p>
+        <p className="max-w-md text-xs text-ledger-smoke">{resolvedDescription}</p>
         <Button type="button" variant="primary" onClick={() => inputRef.current?.click()} disabled={disabled}>
-          {buttonText}
+          {resolvedButtonText}
         </Button>
       </div>
       <input

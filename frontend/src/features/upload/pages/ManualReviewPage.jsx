@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { AppFrame } from "../../../app/AppFrame";
 import { API_BASE_URL } from "../../../config/env";
@@ -12,37 +13,47 @@ const DEFAULT_MONTHLY_EXCEL_PATH = "outputs/monthly/current.xlsx";
 const SOURCE_LOCAL_FILE = "local_file";
 const SOURCE_LARK_SHEET = "lark_sheet";
 
-const barColumns = [
-  { key: "filename", label: "File", readOnly: true },
-  { key: "store_name", label: "Store Name" },
-  { key: "brutto", label: "Brutto" },
-  { key: "netto", label: "Netto" },
-  { key: "run_date", label: "Run Date" },
-];
-
-const zbonColumns = [
-  { key: "filename", label: "File", readOnly: true },
-  { key: "brutto", label: "Brutto" },
-  { key: "netto", label: "Netto" },
-  { key: "run_date", label: "Run Date" },
-];
-
-const officeColumns = [
-  { key: "filename", label: "File", readOnly: true },
-  { key: "sender", label: "Sender" },
-  { key: "brutto", label: "Brutto" },
-  { key: "netto", label: "Netto" },
-  { key: "tax_id", label: "Tax ID" },
-  { key: "receiver", label: "Receiver" },
-];
-
 /**
  * Manual review page for editing row-level fields and controlling merge actions.
  */
 export function ManualReviewPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { client, state, actions, flags } = useUploadFlowContext();
   const effectiveBatchType = state.batch?.type || state.batchType || "daily";
+
+  const barColumns = useMemo(
+    () => [
+      { key: "filename", label: t("review.table.file"), readOnly: true },
+      { key: "store_name", label: t("review.columns.store_name") },
+      { key: "brutto", label: t("review.columns.brutto") },
+      { key: "netto", label: t("review.columns.netto") },
+      { key: "run_date", label: t("review.columns.run_date") },
+    ],
+    [t],
+  );
+
+  const zbonColumns = useMemo(
+    () => [
+      { key: "filename", label: t("review.table.file"), readOnly: true },
+      { key: "brutto", label: t("review.columns.brutto") },
+      { key: "netto", label: t("review.columns.netto") },
+      { key: "run_date", label: t("review.columns.run_date") },
+    ],
+    [t],
+  );
+
+  const officeColumns = useMemo(
+    () => [
+      { key: "filename", label: t("review.table.file"), readOnly: true },
+      { key: "sender", label: t("review.columns.sender") },
+      { key: "brutto", label: t("review.columns.brutto") },
+      { key: "netto", label: t("review.columns.netto") },
+      { key: "tax_id", label: t("review.columns.tax_id") },
+      { key: "receiver", label: t("review.columns.receiver") },
+    ],
+    [t],
+  );
 
   const [draft, setDraft] = useState(() => buildDraftRowsFromFiles(state.files, state.runDate, null));
   const [localError, setLocalError] = useState("");
@@ -107,24 +118,24 @@ export function ManualReviewPage() {
     setLocalError("");
 
     if (!monthlyPath.trim()) {
-      setLocalError("Monthly Excel Path is required.");
+      setLocalError(t("review.invalidPath"));
       return;
     }
 
     if (monthlyPathSource === SOURCE_LARK_SHEET && !isValidHttpUrl(larkSheetLink)) {
-      setLocalError("Please enter a valid Lark sheet URL.");
+      setLocalError(t("review.invalidLarkUrl"));
       return;
     }
 
     const rows = composeReviewRows(draft);
     if (!rows.length) {
-      setLocalError("No review rows available.");
+      setLocalError(t("review.noRows"));
       return;
     }
 
     const reviewOk = await actions.submitReviewOnly(rows);
     if (!reviewOk) {
-      setLocalError("Review submission failed. Please check system error and retry.");
+      setLocalError(t("review.submitFailed"));
       return;
     }
 
@@ -132,7 +143,7 @@ export function ManualReviewPage() {
     if (monthlyPathSource === SOURCE_LOCAL_FILE && selectedLocalFile) {
       const uploadedPath = await actions.resolveMonthlyPathFromLocal(selectedLocalFile);
       if (!uploadedPath) {
-        setLocalError("Local monthly excel source upload failed. Please retry.");
+        setLocalError(t("review.localUploadFailed"));
         return;
       }
       resolvedMonthlyPath = uploadedPath;
@@ -145,17 +156,17 @@ export function ManualReviewPage() {
       metadata: monthlyPathSource === SOURCE_LARK_SHEET ? { lark_sheet_link: larkSheetLink.trim() } : {},
     });
     if (!mergeOk) {
-      setLocalError("Review saved, but merge queue failed. Please retry.");
+      setLocalError(t("review.mergeQueueFailed"));
     }
-  }, [actions, draft, effectiveBatchType, larkSheetLink, mergeMode, monthlyPath, monthlyPathSource, selectedLocalFile]);
+  }, [actions, draft, effectiveBatchType, larkSheetLink, mergeMode, monthlyPath, monthlyPathSource, selectedLocalFile, t]);
 
   const onRetryMerge = useCallback(async () => {
     setLocalError("");
     const ok = await actions.retryMerge();
     if (!ok) {
-      setLocalError("Retry merge failed. Batch must be in failed state with submitted review rows.");
+      setLocalError(t("review.retryMergeFailed"));
     }
-  }, [actions]);
+  }, [actions, t]);
 
   const onSelectLocalExcel = useCallback((event) => {
     const selected = event.target.files?.[0];
@@ -195,49 +206,49 @@ export function ManualReviewPage() {
         return;
       }
 
-      setLocalError("Preview is unavailable for this row.");
+      setLocalError(t("review.previewUnavailable"));
     },
-    [state.batch?.inputs, state.files],
+    [state.batch?.inputs, state.files, t],
   );
 
   return (
     <AppFrame>
       <header className="app-topbar section-enter">
         <div>
-          <h1>Manual Review</h1>
-          <p>Edit extracted fields by category, then submit results in one step.</p>
+          <h1>{t("review.title")}</h1>
+          <p>{t("review.subtitle")}</p>
         </div>
         <div className="topbar-meta">
-          <span className="topbar-chip success">API Connected: v1 ({client.mode})</span>
+          <span className="topbar-chip success">{t("common.apiConnected", { mode: client.mode })}</span>
           <StatusBadge status={state.batch?.status} />
         </div>
       </header>
 
       <section className="kpi-strip section-enter">
         <article className="kpi-card">
-          <p className="kpi-label">Current Batch</p>
+          <p className="kpi-label">{t("review.currentBatch")}</p>
           <p className="kpi-value">{state.batch?.batch_id || "--"}</p>
         </article>
         <article className="kpi-card">
-          <p className="kpi-label">Rows</p>
+          <p className="kpi-label">{t("review.rows")}</p>
           <p className="kpi-value">{totalRows}</p>
         </article>
         <article className="kpi-card">
-          <p className="kpi-label">Review Rows Count</p>
+          <p className="kpi-label">{t("review.reviewRowsCount")}</p>
           <p className="kpi-value">{state.batch?.review_rows_count ?? 0}</p>
         </article>
       </section>
 
       <section className="ledger-shell space-y-4">
-        {!state.batch ? <AlertBanner tone="error" message="No batch found. Create a batch from Upload Management first." /> : null}
+        {!state.batch ? <AlertBanner tone="error" message={t("review.noBatch")} /> : null}
         {state.batch && state.batch.status !== "review_ready" ? (
-          <AlertBanner message={`Batch is ${state.batch.status}. Submit is enabled only when status is review_ready.`} />
+          <AlertBanner message={t("review.onlyReviewReady", { status: state.batch.status })} />
         ) : null}
-        {state.reviewRowsLoading ? <AlertBanner message="Loading review rows from backend..." /> : null}
+        {state.reviewRowsLoading ? <AlertBanner message={t("review.loadingRows")} /> : null}
 
         <ReviewCategoryTable
-          title="BAR Review Items"
-          description="Daily BAR receipts: store name and amount verification."
+          title={t("review.section.barTitle")}
+          description={t("review.section.barDesc")}
           rows={draft.bar}
           columns={barColumns}
           onChangeCell={(rowId, key, value) => onChangeCell("bar", rowId, key, value)}
@@ -245,8 +256,8 @@ export function ManualReviewPage() {
         />
 
         <ReviewCategoryTable
-          title="ZBON Review Items"
-          description="Daily ZBON summary: amount and date verification."
+          title={t("review.section.zbonTitle")}
+          description={t("review.section.zbonDesc")}
           rows={draft.zbon}
           columns={zbonColumns}
           onChangeCell={(rowId, key, value) => onChangeCell("zbon", rowId, key, value)}
@@ -254,8 +265,8 @@ export function ManualReviewPage() {
         />
 
         <ReviewCategoryTable
-          title="OFFICE Review Items"
-          description="Office invoices: sender/tax metadata and amount verification."
+          title={t("review.section.officeTitle")}
+          description={t("review.section.officeDesc")}
           rows={draft.office}
           columns={officeColumns}
           onChangeCell={(rowId, key, value) => onChangeCell("office", rowId, key, value)}
@@ -264,8 +275,8 @@ export function ManualReviewPage() {
 
         <section className="ledger-card p-4">
           <header className="mb-3">
-            <h3 className="text-lg font-semibold">Confirm Results</h3>
-            <p className="mt-1 text-xs text-ledger-smoke">After finishing review edits, submit once to save review and queue merge.</p>
+            <h3 className="text-lg font-semibold">{t("review.confirmTitle")}</h3>
+            <p className="mt-1 text-xs text-ledger-smoke">{t("review.confirmDesc")}</p>
           </header>
 
           <div className="source-switch">
@@ -274,34 +285,34 @@ export function ManualReviewPage() {
               className={`source-switch-btn ${monthlyPathSource === SOURCE_LOCAL_FILE ? "active" : ""}`}
               onClick={() => setMonthlyPathSource(SOURCE_LOCAL_FILE)}
             >
-              from Local
+              {t("review.source.local")}
             </button>
             <button
               type="button"
               className={`source-switch-btn ${monthlyPathSource === SOURCE_LARK_SHEET ? "active" : ""}`}
               onClick={() => setMonthlyPathSource(SOURCE_LARK_SHEET)}
             >
-              from Lark
+              {t("review.source.lark")}
             </button>
           </div>
 
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
-              <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">Mode</span>
+              <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">{t("review.mode")}</span>
               <select
                 className="review-cell-input"
                 value={effectiveBatchType === "daily" ? "overwrite" : mergeMode}
                 onChange={(event) => setMergeMode(event.target.value)}
                 disabled={effectiveBatchType === "daily"}
               >
-                <option value="overwrite">overwrite</option>
-                {effectiveBatchType === "office" ? <option value="append">append</option> : null}
+                <option value="overwrite">{t("review.modeOverwrite")}</option>
+                {effectiveBatchType === "office" ? <option value="append">{t("review.modeAppend")}</option> : null}
               </select>
-              {effectiveBatchType === "daily" ? <span className="text-xs">Daily mode uses overwrite only.</span> : null}
+              {effectiveBatchType === "daily" ? <span className="text-xs">{t("review.dailyModeFixed")}</span> : null}
             </label>
 
             <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
-              <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">Monthly Excel Path</span>
+              <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">{t("review.monthlyPath")}</span>
               <input
                 type="text"
                 className="review-cell-input"
@@ -315,9 +326,9 @@ export function ManualReviewPage() {
           {monthlyPathSource === SOURCE_LOCAL_FILE ? (
             <div className="mt-3">
               <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
-                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">Choose Local Excel</span>
+                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">{t("review.chooseLocalExcel")}</span>
                 <input type="file" accept=".xlsx,.xls" onChange={onSelectLocalExcel} />
-                {selectedLocalFileName ? <span className="text-xs text-ledger-smoke">Selected: {selectedLocalFileName}</span> : null}
+                {selectedLocalFileName ? <span className="text-xs text-ledger-smoke">{t("review.selectedFile", { name: selectedLocalFileName })}</span> : null}
               </label>
             </div>
           ) : null}
@@ -325,7 +336,7 @@ export function ManualReviewPage() {
           {monthlyPathSource === SOURCE_LARK_SHEET ? (
             <div className="mt-3">
               <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
-                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">Lark Sheet Link</span>
+                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">{t("review.larkLink")}</span>
                 <input
                   type="text"
                   className="review-cell-input"
@@ -333,21 +344,21 @@ export function ManualReviewPage() {
                   value={larkSheetLink}
                   onChange={(event) => setLarkSheetLink(event.target.value)}
                 />
-                <span className="text-xs text-ledger-smoke">Coming Soon: full Lark source integration will be enabled with backend support.</span>
+                <span className="text-xs text-ledger-smoke">{t("review.larkComingSoon")}</span>
               </label>
             </div>
           ) : null}
 
           <div className="mt-3 flex flex-wrap gap-2">
             <Button type="button" variant="primary" onClick={() => void onSubmit()} disabled={submitDisabled}>
-              Submit
+              {t("common.submit")}
             </Button>
             <Button type="button" variant="ghost" onClick={() => navigate("/")}>
-              Back to Upload
+              {t("common.backToUpload")}
             </Button>
             {showRetryMerge ? (
               <Button type="button" variant="danger" onClick={() => void onRetryMerge()} disabled={flags.isBusy}>
-                Retry Merge
+                {t("review.retryMerge")}
               </Button>
             ) : null}
           </div>
@@ -355,7 +366,7 @@ export function ManualReviewPage() {
 
         {localError ? <AlertBanner tone="error" message={localError} /> : null}
         {state.systemError ? <AlertBanner tone="error" message={state.systemError} /> : null}
-        {flags.isDone ? <AlertBanner message="Merge finished. Workflow reached done state." /> : null}
+        {flags.isDone ? <AlertBanner message={t("upload.doneHint")} /> : null}
       </section>
     </AppFrame>
   );

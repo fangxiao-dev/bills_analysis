@@ -1,4 +1,5 @@
-﻿import { Button } from "../../../shared/ui/Button";
+import { Button } from "../../../shared/ui/Button";
+import { useTranslation } from "react-i18next";
 
 /**
  * File queue rendered as high-density table for business workflows.
@@ -8,8 +9,10 @@
  * }} props
  */
 export function FileQueuePanel({ files, onRemove }) {
+  const { t } = useTranslation();
+
   if (!files.length) {
-    return <p className="text-sm text-ledger-smoke">No files in queue yet.</p>;
+    return <p className="text-sm text-ledger-smoke">{t("upload.queueEmpty")}</p>;
   }
 
   return (
@@ -17,10 +20,10 @@ export function FileQueuePanel({ files, onRemove }) {
       <table className="queue-table">
         <thead>
           <tr>
-            <th>File</th>
-            <th>Category</th>
-            <th>Size</th>
-            <th>Actions</th>
+            <th>{t("upload.queue.file")}</th>
+            <th>{t("upload.queue.category")}</th>
+            <th>{t("upload.queue.size")}</th>
+            <th>{t("common.actions")}</th>
           </tr>
         </thead>
         <tbody>
@@ -35,7 +38,7 @@ export function FileQueuePanel({ files, onRemove }) {
               <td className="text-ledger-smoke">{formatBytes(entry.size)}</td>
               <td>
                 <Button type="button" variant="danger" className="px-2 py-1 text-xs" onClick={() => onRemove(entry.id)}>
-                  Remove
+                  {t("common.remove")}
                 </Button>
               </td>
             </tr>

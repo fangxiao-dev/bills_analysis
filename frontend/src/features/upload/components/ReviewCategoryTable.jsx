@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { isLowConfidenceField, rowNeedsManualReview } from "../utils/reviewConfidence";
 
 /**
@@ -13,6 +14,8 @@ import { isLowConfidenceField, rowNeedsManualReview } from "../utils/reviewConfi
  * }} props
  */
 export function ReviewCategoryTable({ title, description, rows, columns, onChangeCell, onViewRow }) {
+  const { t } = useTranslation();
+
   if (!rows.length) {
     return null;
   }
@@ -31,7 +34,7 @@ export function ReviewCategoryTable({ title, description, rows, columns, onChang
               {columns.map((column) => (
                 <th key={column.key}>{column.label}</th>
               ))}
-              <th>Actions</th>
+              <th>{t("common.actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -56,12 +59,13 @@ export function ReviewCategoryTable({ title, description, rows, columns, onChang
                   <a
                     href="#"
                     className="review-view-link"
+                    title={t("review.openInNewTab")}
                     onClick={(event) => {
                       event.preventDefault();
                       onViewRow?.(row);
                     }}
                   >
-                    View
+                    {t("review.table.view")}
                   </a>
                 </td>
               </tr>
