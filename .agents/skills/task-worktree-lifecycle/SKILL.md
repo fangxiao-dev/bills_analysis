@@ -46,6 +46,11 @@ Derived values:
   - if `worktree_path` provided: use as-is
   - else: `../wt-<task_id>`
 
+Path policy:
+
+- Default worktree path must be a sibling visible directory (for example `../wt-TC-007`).
+- Do not create task worktrees under hidden folders (for example `.worktrees/`) 
+
 ## Default behavior
 
 - Mode: semi-automatic checklist with stop points.
@@ -84,7 +89,15 @@ bash scripts/sync_worktree_config.sh --apply
 Notes:
 
 - Dry-run (`bash scripts/sync_worktree_config.sh`) is mandatory and must run before apply.
+- On Windows, if `bash` is unavailable or blocked, run an equivalent PowerShell sync for the same items:
+  - `.agents/`
+  - `.claude/rules/`
+  - `.claude/skills/`
+  - `.env`
+  - `frontend/.env.local`
 - If `apply_sync=false`, skip the apply command and report explicitly.
+- If branch/worktree creation fails due permission/sandbox lock, rerun with elevated permission.
+- Do not change branch naming convention as a workaround. Keep `feat/<task_id>-<slug>`.
 - Output summary:
   - created branch
   - created worktree path
@@ -107,7 +120,7 @@ pnpm --dir frontend install
 Minimal checks:
 
 ```bash
-uv run invoice-web-api --help
+uv run python -c "import bills_analysis"
 pnpm --dir frontend test
 ```
 
@@ -167,6 +180,14 @@ Optional cleanup (only when clean):
 ```bash
 git -C <resolved_worktree_path> status --short
 git worktree remove <resolved_worktree_path>
+```
+
+Windows cleanup fallback (when `git worktree remove` cannot delete pnpm/node_modules links):
+
+```bash
+git worktree remove --force <resolved_worktree_path>
+cmd /c rmdir /S /Q <resolved_worktree_path>
+git worktree prune
 ```
 
 Behavior:

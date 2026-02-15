@@ -38,6 +38,7 @@
 - 一个 `plan_id` 可以绑定多个 task
 - 一个 `task_id` 同时只允许一个活跃 plan（`PLANNED` 状态）
 - 继续执行前必须先读取对应 plan 的三文件
+- task worktree 默认使用同级可见目录（`../wt-<task_id>`）
 
 ## CLI Contract
 
