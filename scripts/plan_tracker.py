@@ -469,7 +469,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser = subparsers.add_parser("quick-plan", help="Create one plan and bind task(s)")
     plan_parser.add_argument("--task-ids", help="Comma-separated task ids. Omit for auto-select.")
     plan_parser.add_argument("--max-tasks", type=int, default=1, help="Auto-select count when task ids omitted.")
-    plan_parser.add_argument("--owner", default="agent-a", help="Owner written into todo rows.")
+    plan_parser.add_argument("--owner", default="claude-agent", help="Owner identifier written into todo rows.")
     plan_parser.add_argument("--plan-id", help="Optional explicit plan id.")
     plan_parser.add_argument("--note", help="Optional note written to selected tasks.")
     plan_parser.set_defaults(func=cmd_quick_plan)

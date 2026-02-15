@@ -3,7 +3,7 @@
 ## 1. Project Context
 
 - 项目目标：面向餐馆内部，完成 `daily/office` 两种场景的票据的上传、提取、人工校验、归档预览与最终 merge 入账闭环。
-- 当前阶段：`M1`（MVP 本地全流程闭环）：前后端并行开发，目标是完成上传→提取→人工校验→merge 入账的完整 Web App 流程，本地可运行。
+- 当前阶段：`M1`（MVP 本地全流程闭环）：基于任务 worktree 并行推进功能点，目标是完成上传→提取→人工校验→merge 入账的完整 Web App 流程，本地可运行。
 - 当前 API Contract： `v1`（Frozen，当前唯一对接基线）。
 
 技术栈：
@@ -52,11 +52,15 @@ Milestone Status：
 - Frontend：已按 `v1` 契约推进上传与状态流转页面，real smoke 已通过 daily/office 双模式 merged 终态。
 - 整体进度判断：`M1` 进行中，剩余功能点见 `plans/todo_current.md`。
 
-## 4. Collaboration Boundaries
+## 4. Task-Based Worktree Workflow
 
-前后端严格隔离，禁止互改。详见 `.claude/rules/collaboration-boundaries.md`。
+每个任务使用独立 worktree 进行开发，从 main 创建分支 `feat/<task_id>-<slug>`。详见 `.claude/rules/collaboration-boundaries.md`。
 
-核心要点：Frontend 仅改 `frontend/**`，Backend 仅改 `src/bills_analysis/**`。Commit 前缀 `frontend: ...` / `backend: ...`，不混合。
+核心要点：
+- 文件范围语义指导：`frontend/**` 为前端范围，`src/bills_analysis/**` 为后端范围，但允许跨范围修改以完成任务闭环。
+- 分支命名：`feat/<task_id>-<slug>`，Commit 前缀：`<task_id>: ...`。
+- Worktree 生命周期：PM 创建任务 → 创建 worktree → Planning → Implementation → Sync main → Regression → Merge to main。
+- API Contract 冻结：在实现/调试期间不得修改 `v1` 已发布字段（参见 Section 5）。
 
 ## 5. API Contract Rules (v1 Frozen)
 
@@ -64,13 +68,7 @@ Milestone Status：
 
 核心要点：以 `src/bills_analysis/models/` 为唯一 contract 来源，变更必须先更新 schema 再更新调用方。
 
-## 6. Session Handoff
-
-`SESSION_NOTES.md` 是当前状态对齐文件（非审计日志）。详见 `.claude/rules/session-handoff.md`。
-
-核心要点：fenced JSON 记录，> 10 条时建议 `/session-notes-compact` 语义压缩。写入命令 `python scripts/session_notes.py log ...`。
-
-## 7. Task Tracking
+## 6. Task Tracking
 
 当前里程碑的具体待办功能点通过 `plans/` 目录管理：
 
@@ -80,7 +78,7 @@ Milestone Status：
 - `plans/workplans/`：每个 plan 对应三文件：`task_plan.<plan_id>.md`、`findings.<plan_id>.md`、`progress.<plan_id>.md`。
 - `plans/todo_future.md`：未来里程碑的功能点，仅记录参考，暂不实现。
 
-## 8. Planning-with-files Local Customization
+## 7. Planning-with-files Local Customization
 
 当用户希望Agent辅助规划plans时，使用`planning-with-files`这个SKILL。在本仓库采用 task-tracker + workplans 模式，作为多 agent 并行协作的标准入口。
 状态机固定为 `UNPLANNED -> PLANNED -> DONE`，并要求 `PLANNED/DONE` 绑定 `plan_id`。
@@ -90,26 +88,25 @@ Milestone Status：
 - 规则：`.claude/rules/planning-with-files.md`
 - 操作手册：`plans/workplans/README.md`
 
-## 9. Commands You Should Prefer
+## 8. Commands You Should Prefer
 
 - 启动 API：`uv run invoice-web-api`
 - Contract 测试：`uv run pytest tests/test_api_schema_v1.py -q`
 - 导出 OpenAPI v1：`uv run python scripts/export_openapi_v1.py`
 - Frontend 开发：`pnpm dev` / `pnpm test`
 
-## 10. Definition of Done & Safety
+## 9. Definition of Done & Safety
 
 详见 `.claude/rules/dod-and-safety.md`。
 
 核心要点：contract 一致性验证、功能可运行、可观测、不破坏既有流程、新代码有注释、文档按需更新。
 
-## 11. Maintenance of This File
+## 10. Maintenance of This File
 
 本文件是仓库级主协作规范。稳定规则已拆分到 `.claude/rules/*.md`：
 
-- `.claude/rules/collaboration-boundaries.md` — 前后端边界与提交约定
+- `.claude/rules/collaboration-boundaries.md` — 开发范围语义指导与 worktree 工作流
 - `.claude/rules/api-contract.md` — v1 冻结策略与契约优先规则
-- `.claude/rules/session-handoff.md` — SESSION_NOTES 字段规范、命令与压缩策略
 - `.claude/rules/planning-with-files.md` — task-tracker/workplans 触发语义、并行约束与命令契约
 - `.claude/rules/dod-and-safety.md` — 完成标准与安全约束
 
@@ -120,6 +117,6 @@ Milestone Status：
 - 标准启动/验证命令变化。
 - DoD 或安全规范变化。
 
-更新责任：发起变更的 session 负责同步更新本文件、rules 文件与 `SESSION_NOTES.md`。
+更新责任：发起变更的 session 负责同步更新本文件与 rules 文件。
 
 冲突处理：若 rules 文件与本文件冲突，以本文件为准。

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-将 `planning-with-files` 统一为 `task tracker + per-plan workplans` 协作模式，降低多 agent 并行时的状态冲突和上下文漂移。
+将 `planning-with-files` 统一为 `task tracker + per-plan workplans` 协作模式，支持并行任务 worktree 开发，降低状态冲突和上下文漂移。
 
 ## Source of Truth
 
@@ -42,13 +42,16 @@
 ## CLI Contract
 
 - `python scripts/plan_tracker.py list`
-- `python scripts/plan_tracker.py quick-plan --task-ids <ids> --owner <agent>`
-- `python scripts/plan_tracker.py quick-plan --max-tasks <n> --owner <agent>`
+- `python scripts/plan_tracker.py quick-plan --task-ids <ids> --owner <identifier>`
+- `python scripts/plan_tracker.py quick-plan --max-tasks <n> --owner <identifier>`
 - `python scripts/plan_tracker.py quick-resume [--plan-id <id> | --task-id <id>]`
 - `python scripts/plan_tracker.py set-status --task-id <id> --status <UNPLANNED|PLANNED|DONE>`
-- `python scripts/plan_tracker.py bind-task --task-id <id> --plan-id <id> --owner <agent>`
+- `python scripts/plan_tracker.py bind-task --task-id <id> --plan-id <id> --owner <identifier>`
+
+注意：`--owner` 用于标识任务执行者（如 `claude-agent`），不再使用 `agent-a`/`agent-b` 的命名方式。
 
 ## Audit & Handoff
 
-- 每完成一个可交接单元，写入 `SESSION_NOTES.md`（`python scripts/session_notes.py log ...`）
-- 记录至少包含：做了什么、为什么、下一步和 owner
+- 每完成一个可交接单元，更新 `progress.<plan_id>.md`（记录已完成项、阻塞项、下一步）
+- 风险和技术决策记录在 `findings.<plan_id>.md`
+- 跨 task 依赖通过 `todo_current.md` 的 `note` 字段声明（如 `blocked by TC-008`）

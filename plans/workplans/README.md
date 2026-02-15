@@ -29,7 +29,7 @@
 
 ```powershell
 python scripts/plan_tracker.py list
-python scripts/plan_tracker.py quick-plan --max-tasks 2 --owner agent-a
+python scripts/plan_tracker.py quick-plan --max-tasks 2 --owner claude-agent
 python scripts/plan_tracker.py quick-resume
 python scripts/plan_tracker.py set-status --task-id TC-001 --status DONE
 ```
