@@ -37,5 +37,9 @@ data/samples/*
 .agents/*
 !.agents/skills/
 .agents/skills/*
-!.agents/skills/context-handoff/
 !.agents/skills/cross-worktree-sync/
+!.agents/skills/task-worktree-lifecycle/
+!.agents/skills/
+!.agents/docs/
+.agents/docs/*
+!.agents/docs/wt-pm-workflow.md

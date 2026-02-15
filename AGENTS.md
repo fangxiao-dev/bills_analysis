@@ -212,5 +212,9 @@ Lark 接入策略：
 - 触发方式：
   - 在需求中显式写 `$frontend-design` 或 `$vercel-react-best-practices`。
   - 或任务描述明确属于对应 skill 的适用范围（如组件构建、页面设计、React 性能优化等）。
-- Skill 文件路径约定：`/.codex/skills/**/SKILL.md`。
+- Skill 文件路径约定：`/.agents/skills/**/SKILL.md`。
 - 若 skill 缺失、未安装或路径不可读，需在回复中明确说明，并使用常规方案继续执行。
+
+### 8.2 Task Worktree Lifecycle Skill
+- 当任务包含完整 worktree 生命周期操作（创建 worktree、同步配置、环境初始化、回归前同步 `dev`、合并回 `dev`）时，使用 `task-worktree-lifecycle`。
+- 详细文档：`.agents/skills/task-worktree-lifecycle/SKILL.md`

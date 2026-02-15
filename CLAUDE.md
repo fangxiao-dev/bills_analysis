@@ -88,6 +88,12 @@ Milestone Status：
 - 规则：`.claude/rules/planning-with-files.md`
 - 操作手册：`plans/workplans/README.md`
 
+## 7.1 Task Worktree Lifecycle Skill
+
+当需求涉及 task worktree 生命周期操作（创建 task worktree、同步共享配置、按 README 初始化前后端环境、从 `dev` 同步后回归、最终合并回 `dev`）时，启用 `task-worktree-lifecycle`。
+
+- 详细文档：`.agents/skills/task-worktree-lifecycle/SKILL.md`
+
 ## 8. Commands You Should Prefer
 
 - 启动 API：`uv run invoice-web-api`
