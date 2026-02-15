@@ -20,8 +20,16 @@ def _new_book(path: Path, headers: list[str], rows: list[list[object]]) -> None:
     wb.save(path)
 
 
-def test_daily_merge_overwrite_parity() -> None:
-    """Daily merge should overwrite matching Datum row fields by header mapping."""
+def _sheet_rows_as_values(path: Path) -> list[list[object]]:
+    """Read worksheet values from row2 onward for deterministic assertions."""
+
+    wb = load_workbook(path)
+    ws = wb.active
+    return [[ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)] for r in range(2, ws.max_row + 1)]
+
+
+def test_daily_merge_overwrite_existing_datum() -> None:
+    """Daily overwrite mode should update existing matching Datum row."""
 
     root = Path("outputs") / "pytest_tmp" / str(uuid4())
     validated = root / "validated_daily.xlsx"
@@ -43,6 +51,109 @@ def test_daily_merge_overwrite_parity() -> None:
     ws = wb.active
     assert ws.cell(row=2, column=2).value == 120.0
     assert ws.cell(row=2, column=3).value == 100.0
+
+
+def test_daily_merge_overwrite_missing_datum_appends() -> None:
+    """Daily overwrite mode should append when Datum does not yet exist."""
+
+    root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    validated = root / "validated_daily.xlsx"
+    monthly = root / "monthly_daily.xlsx"
+
+    _new_book(
+        validated,
+        ["Datum", "Umsatz Brutto", "Umsatz Netto", "need review"],
+        [["05/02/2026", 120.0, 100.0, False]],
+    )
+    _new_book(
+        monthly,
+        ["Datum", "Umsatz Brutto", "Umsatz Netto"],
+        [["04/02/2026", 1.0, 2.0]],
+    )
+
+    out_path = merge_daily(validated, monthly, out_dir=root)
+    rows = _sheet_rows_as_values(out_path)
+    assert len(rows) == 2
+    assert rows[1][0].strftime("%d/%m/%Y") == "05/02/2026"
+    assert rows[1][1] == 120.0
+    assert rows[1][2] == 100.0
+
+
+def test_daily_merge_append_allows_duplicate_datum() -> None:
+    """Daily append mode should always add a new row even with duplicate Datum."""
+
+    root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    validated = root / "validated_daily.xlsx"
+    monthly = root / "monthly_daily.xlsx"
+
+    _new_book(
+        validated,
+        ["Datum", "Umsatz Brutto", "Umsatz Netto", "need review"],
+        [["04/02/2026", 120.0, 100.0, False]],
+    )
+    _new_book(
+        monthly,
+        ["Datum", "Umsatz Brutto", "Umsatz Netto"],
+        [["04/02/2026", 1.0, 2.0]],
+    )
+
+    out_path = merge_daily(validated, monthly, out_dir=root, append=True)
+    rows = _sheet_rows_as_values(out_path)
+    assert len(rows) == 2
+    assert rows[0][0].strftime("%d/%m/%Y") == "04/02/2026"
+    assert rows[1][0].strftime("%d/%m/%Y") == "04/02/2026"
+    assert rows[0][1] == 1.0
+    assert rows[1][1] == 120.0
+
+
+def test_daily_merge_creates_missing_monthly_template() -> None:
+    """Daily merge should create a canonical monthly workbook when target file is missing."""
+
+    root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    validated = root / "validated_daily.xlsx"
+    monthly = root / "missing_monthly_daily.xlsx"
+
+    _new_book(
+        validated,
+        ["Datum", "Umsatz Brutto", "Umsatz Netto", "need review"],
+        [["04/02/2026", 120.0, 100.0, False]],
+    )
+    assert not monthly.exists()
+
+    out_path = merge_daily(validated, monthly, out_dir=root)
+    assert monthly.exists()
+    wb_monthly = load_workbook(monthly)
+    ws_monthly = wb_monthly.active
+    headers = [cell.value for cell in ws_monthly[1]]
+    assert headers[:4] == ["Datum", "Umsatz Brutto", "Umsatz Netto", "Wie viel Rechnungen"]
+
+    rows = _sheet_rows_as_values(out_path)
+    assert len(rows) == 1
+    assert rows[0][1] == 120.0
+    assert rows[0][2] == 100.0
+
+
+def test_daily_merge_always_sorts_by_datum_ascending() -> None:
+    """Daily merge result should be sorted by Datum ascending after merge."""
+
+    root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    validated = root / "validated_daily.xlsx"
+    monthly = root / "monthly_daily.xlsx"
+
+    _new_book(
+        validated,
+        ["Datum", "Umsatz Brutto", "Umsatz Netto", "need review"],
+        [["04/02/2026", 120.0, 100.0, False]],
+    )
+    _new_book(
+        monthly,
+        ["Datum", "Umsatz Brutto", "Umsatz Netto"],
+        [["06/02/2026", 6.0, 6.0], ["05/02/2026", 5.0, 5.0]],
+    )
+
+    out_path = merge_daily(validated, monthly, out_dir=root)
+    rows = _sheet_rows_as_values(out_path)
+    assert [row[0].strftime("%d/%m/%Y") for row in rows] == ["04/02/2026", "05/02/2026", "06/02/2026"]
 
 
 def test_office_merge_append_parity() -> None:

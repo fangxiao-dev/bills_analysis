@@ -29,6 +29,7 @@ frontend/pnpm-lock.yaml
 frontend/coverage/
 .mypy_cache/
 .ruff_cache/
+.uv-cache
 
 # OS files
 .DS_Store

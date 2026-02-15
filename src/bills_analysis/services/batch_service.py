@@ -115,23 +115,12 @@ class BatchService:
             if not filename:
                 raise ValueError(f"row[{index}] filename is required")
 
-            result = row.get("result") if isinstance(row.get("result"), dict) else {}
-            if not result:
-                # Transitional compatibility: frontend may submit flattened editable fields at top level.
-                for key in [
-                    "brutto",
-                    "netto",
-                    "store_name",
-                    "total_tax",
-                    "run_date",
-                    "type",
-                    "sender",
-                    "tax_id",
-                    "receiver_ok",
-                    "receiver",
-                ]:
-                    if row.get(key) is not None:
-                        result[key] = row.get(key)
+            result = row.get("result")
+            if not isinstance(result, dict):
+                raise ValueError(
+                    f"row[{index}] result must be an object in canonical shape "
+                    "{row_id,category,filename,result,score,preview_path}"
+                )
             if run_date and result.get("run_date") in (None, "", "None"):
                 result["run_date"] = run_date
             meaningful_keys = [
@@ -139,9 +128,10 @@ class BatchService:
                 for key, value in result.items()
                 if key != "run_date" and value not in (None, "", "None")
             ]
-            if not isinstance(result, dict) or not meaningful_keys:
+            if not meaningful_keys:
                 raise ValueError(
-                    f"row[{index}] must include non-empty result object or mappable top-level result fields"
+                    f"row[{index}] result must include non-empty business fields in canonical shape "
+                    "{row_id,category,filename,result,score,preview_path}"
                 )
 
             score = row.get("score") if isinstance(row.get("score"), dict) else {}

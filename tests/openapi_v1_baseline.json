@@ -277,6 +277,44 @@
         "summary": "Queue Merge"
       }
     },
+    "/v1/batches/{batch_id}/merge-output/download": {
+      "get": {
+        "description": "Serve merged Excel output for one batch in local-debug workflow.",
+        "operationId": "download_merge_output_v1_batches__batch_id__merge_output_download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Merge Output"
+      }
+    },
     "/v1/batches/{batch_id}/merge-source/local": {
       "post": {
         "description": "Upload monthly local Excel source and persist path for merge fallback usage.",

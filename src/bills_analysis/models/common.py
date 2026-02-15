@@ -16,6 +16,8 @@ class InputFile(StrictModel):
 
     path: str = Field(min_length=1)
     category: Literal["bar", "zbon", "office"] | None = None
+    status: Literal["queued", "processing", "extracted", "failed"] | None = None
+    error: str | None = None
 
 
 class ErrorInfo(StrictModel):

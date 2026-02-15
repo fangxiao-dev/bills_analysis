@@ -79,6 +79,28 @@ Local backend CLI skeleton for the invoice Azure API extraction PoC.
   `GET /v1/batches/{batch_id}/files/{row_id}/preview`
 - Submit reviewed rows:  
   `PUT /v1/batches/{batch_id}/review`
+  - Canonical payload (required):
+  ```json
+  {
+    "rows": [
+      {
+        "row_id": "row-0001",
+        "category": "bar",
+        "filename": "zbon.pdf",
+        "result": {
+          "brutto": "12.30",
+          "netto": "10.00",
+          "store_name": "Demo Store"
+        },
+        "score": {
+          "brutto": 0.95
+        },
+        "preview_path": "outputs/webapp/<batch_id>/archive/bar/01_zbon_xxx.pdf"
+      }
+    ]
+  }
+  ```
+  - Flat editable fields at row top-level are deprecated and rejected with `422`.
 - Upload local monthly excel source for merge fallback:  
   `POST /v1/batches/{batch_id}/merge-source/local` (multipart field: `file`)
 - Queue merge:  

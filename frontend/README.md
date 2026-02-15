@@ -63,3 +63,23 @@ Validation notes:
 - enums match backend values 1:1
 - review submit payload must use canonical nested rows:
   - `{ row_id, category, filename, result, score, preview_path? }`
+
+## Pre-release Checklist
+- Run frontend full suite: `pnpm test`
+- Run real smoke with valid sample PDFs and excel paths: `pnpm smoke:real`
+- Verify three smoke cases reach `merged`:
+  - `daily-overwrite`
+  - `office-append`
+  - `office-overwrite`
+- Confirm frontend review submit payload keeps canonical nested shape:
+  - `{ row_id, category, filename, result, score, preview_path? }`
+
+## Retry And Failure Alignment
+- Backend health unavailable:
+  - Check `GET /healthz` first, then retry smoke after backend recovery.
+- Validation `422` on review submit:
+  - Frontend must surface parsed field-level error details from FastAPI `detail`.
+  - Fix payload field values in ManualReview and resubmit canonical payload.
+- Merge `failed` status:
+  - Keep reviewed rows and allow merge retry with corrected excel source path.
+  - Re-run only failed case after updating `SMOKE_DAILY_EXCEL_PATH` / `SMOKE_OFFICE_EXCEL_PATH`.

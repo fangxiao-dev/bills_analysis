@@ -93,7 +93,7 @@ class LocalPipelineBackend:
     def __init__(self, *, root: Path | None = None) -> None:
         """Initialize output root and per-file timeout controls."""
 
-        self.root = root or Path("outputs") / "webapp"
+        self.root = (root or (Path("outputs") / "webapp")).resolve()
         self.file_timeout_sec = float(os.getenv("BACKEND_FILE_TIMEOUT_SEC", "180"))
 
     async def process_batch(self, batch: BatchRecord) -> dict[str, Any]:
@@ -306,15 +306,20 @@ class LocalPipelineBackend:
         if not monthly_excel_path:
             raise ValueError("monthly_excel_path is required for merge")
         monthly_excel = Path(str(monthly_excel_path))
-        if not monthly_excel.exists():
+        append_mode = str(payload.get("mode", "overwrite")) == "append"
+        if batch.batch_type.value != "daily" and not monthly_excel.exists():
             raise ValueError(f"monthly_excel_path not found: {monthly_excel}")
 
         validated_excel = out_dir / f"validated_for_merge_{int(datetime.now().timestamp())}.xlsx"
         if batch.batch_type.value == "daily":
             self._write_daily_validated_excel(batch, validated_excel)
-            merged_excel = merge_daily(validated_excel, monthly_excel, out_dir=out_dir)
+            merged_excel = merge_daily(
+                validated_excel,
+                monthly_excel,
+                out_dir=out_dir,
+                append=append_mode,
+            )
         else:
-            append_mode = str(payload.get("mode", "overwrite")) == "append"
             self._write_office_validated_excel(batch, validated_excel)
             merged_excel = merge_office(
                 validated_excel,
@@ -329,9 +334,10 @@ class LocalPipelineBackend:
                 {
                     "batch_id": batch.batch_id,
                     "mode": payload.get("mode", "overwrite"),
-                    "monthly_excel_path": str(monthly_excel),
-                    "validated_excel_path": str(validated_excel),
-                    "merged_excel_path": str(merged_excel),
+                    "monthly_excel_path": str(monthly_excel.resolve()),
+                    "validated_excel_path": str(validated_excel.resolve()),
+                    "merged_excel_path": str(merged_excel.resolve()),
+                    "merged_excel_download_path": f"/v1/batches/{batch.batch_id}/merge-output/download",
                     "review_rows_count": len(batch.review_rows),
                     "generated_at": datetime.now(UTC).isoformat(),
                 },
@@ -340,10 +346,16 @@ class LocalPipelineBackend:
             ),
             encoding="utf-8",
         )
+        merged_abs_path = str(merged_excel.resolve())
+        merged_download_path = f"/v1/batches/{batch.batch_id}/merge-output/download"
         return {
-            "merge_summary_path": str(merge_summary_path),
-            "validated_excel_path": str(validated_excel),
-            "merged_excel_path": str(merged_excel),
+            "merge_summary_path": str(merge_summary_path.resolve()),
+            "validated_excel_path": str(validated_excel.resolve()),
+            "merged_excel_path": merged_download_path,
+            "output_path": merged_download_path,
+            "merged_excel_abs_path": merged_abs_path,
+            "output_abs_path": merged_abs_path,
+            "merge_mode": str(payload.get("mode", "overwrite")),
         }
 
     def _write_daily_validated_excel(self, batch: BatchRecord, out_path: Path) -> None:

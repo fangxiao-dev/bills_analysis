@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import shutil
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 
 from bills_analysis.excel_ops import (
     merge_validated_row,
     normalize_date,
     normalize_header,
+    parse_datum,
     write_datum_cell,
 )
 
@@ -49,13 +50,85 @@ def _find_row_by_datum(ws: Any, datum: str) -> int | None:
     return None
 
 
+def _build_daily_template_headers(*, max_expense_rows: int = 5) -> list[str]:
+    """Build canonical daily monthly-template headers for first-time workbook creation."""
+
+    headers = ["Datum", "Umsatz Brutto", "Umsatz Netto", "Wie viel Rechnungen"]
+    for idx in range(1, max_expense_rows + 1):
+        headers.extend(
+            [
+                f"Ausgabe {idx} Name",
+                f"Ausgabe {idx} Brutto",
+                f"Ausgabe {idx} Netto",
+            ]
+        )
+    return headers
+
+
+def _ensure_daily_monthly_template(monthly_xlsx: Path) -> None:
+    """Create a blank daily monthly workbook with canonical headers when target is missing."""
+
+    if monthly_xlsx.exists():
+        return
+    monthly_xlsx.parent.mkdir(parents=True, exist_ok=True)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Daily"
+    ws.append(_build_daily_template_headers())
+    wb.save(monthly_xlsx)
+
+
+def _sort_daily_rows_by_datum(ws: Any) -> None:
+    """Sort data rows by Datum ascending; unparseable Datum values are placed last."""
+
+    rows: list[list[Any]] = []
+    for row_idx in range(2, ws.max_row + 1):
+        row_values = [ws.cell(row=row_idx, column=col_idx).value for col_idx in range(1, ws.max_column + 1)]
+        if any(_cell_has_value(value) for value in row_values):
+            rows.append(row_values)
+
+    def _sort_key(row_values: list[Any]) -> tuple[int, date, str]:
+        datum_raw = row_values[0] if row_values else None
+        datum_norm = normalize_date(datum_raw) or str(datum_raw or "").strip()
+        datum_parsed = parse_datum(datum_norm)
+        if datum_parsed is not None:
+            return (0, datum_parsed, "")
+        return (1, date.max, datum_norm.lower())
+
+    rows.sort(key=_sort_key)
+    if ws.max_row >= 2:
+        ws.delete_rows(2, ws.max_row - 1)
+    for row_values in rows:
+        ws.append(row_values)
+        current_row = ws.max_row
+        if row_values:
+            write_datum_cell(ws.cell(row=current_row, column=1), row_values[0])
+
+
+def _build_output_workbook_path(
+    *,
+    out_dir: Path,
+    validated_xlsx: Path,
+    monthly_xlsx: Path,
+) -> Path:
+    """Build a unique merge output path and guard against input/output path collisions."""
+
+    out_path = out_dir / f"full_result_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.xlsx"
+    if out_path.resolve() == validated_xlsx.resolve():
+        raise ValueError("输出路径与已校验文件相同，请指定不同的输出目录。")
+    if out_path.resolve() == monthly_xlsx.resolve():
+        raise ValueError("输出路径与全量文件相同，请指定不同的输出目录。")
+    return out_path
+
+
 def merge_daily_excel(
     validated_xlsx: Path,
     monthly_xlsx: Path,
     *,
     out_dir: Path | None = None,
+    append: bool = False,
 ) -> Path:
-    """Merge daily validated one-row Excel into monthly workbook by Datum."""
+    """Merge daily validated one-row Excel into monthly workbook with overwrite/append mode."""
 
     validated_headers, validated_row = _load_single_row(validated_xlsx)
     if not validated_headers or validated_headers[0] != "Datum":
@@ -66,24 +139,27 @@ def merge_daily_excel(
 
     out_dir = out_dir or monthly_xlsx.parent
     out_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = int(datetime.now().timestamp())
-    out_path = out_dir / f"full_result_{timestamp}.xlsx"
-    if out_path.resolve() == validated_xlsx.resolve():
-        raise ValueError("输出路径与已校验文件相同，请指定不同的输出目录。")
-    if out_path.resolve() == monthly_xlsx.resolve():
-        raise ValueError("输出路径与全量文件相同，请指定不同的输出目录。")
+    out_path = _build_output_workbook_path(
+        out_dir=out_dir,
+        validated_xlsx=validated_xlsx,
+        monthly_xlsx=monthly_xlsx,
+    )
 
+    _ensure_daily_monthly_template(monthly_xlsx)
     shutil.copy2(monthly_xlsx, out_path)
     wb = load_workbook(out_path)
     ws = wb.active
     monthly_headers = [str(cell.value).strip() if cell.value is not None else "" for cell in ws[1]]
     header_to_col = {name: idx + 1 for idx, name in enumerate(monthly_headers)}
 
-    target_row = _find_row_by_datum(ws, datum)
-    if target_row is None:
-        raise ValueError(f"Datum not found in monthly Excel: {datum}")
-
     updates, _missing_headers = merge_validated_row(validated_headers, validated_row, monthly_headers)
+    if append:
+        target_row = ws.max_row + 1
+    else:
+        target_row = _find_row_by_datum(ws, datum)
+        if target_row is None:
+            target_row = ws.max_row + 1
+
     for header, value in updates.items():
         col_idx = header_to_col.get(header)
         if col_idx is None:
@@ -94,6 +170,9 @@ def merge_daily_excel(
         else:
             cell.value = value
 
+    if "Datum" in header_to_col:
+        write_datum_cell(ws.cell(row=target_row, column=header_to_col["Datum"]), datum)
+    _sort_daily_rows_by_datum(ws)
     wb.save(out_path)
     return out_path
 
@@ -130,12 +209,11 @@ def merge_office_excel(
 
     out_dir = out_dir or monthly_xlsx.parent
     out_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = int(datetime.now().timestamp())
-    out_path = out_dir / f"full_result_{timestamp}.xlsx"
-    if out_path.resolve() == validated_xlsx.resolve():
-        raise ValueError("输出路径与已校验文件相同，请指定不同的输出目录。")
-    if out_path.resolve() == monthly_xlsx.resolve():
-        raise ValueError("输出路径与全量文件相同，请指定不同的输出目录。")
+    out_path = _build_output_workbook_path(
+        out_dir=out_dir,
+        validated_xlsx=validated_xlsx,
+        monthly_xlsx=monthly_xlsx,
+    )
 
     shutil.copy2(monthly_xlsx, out_path)
     wb = load_workbook(out_path)
