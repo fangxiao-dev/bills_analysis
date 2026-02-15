@@ -11,7 +11,7 @@ from typing import Iterable
 TODO_PATH = Path("plans/todo_current.md")
 WORKPLAN_DIR = Path("plans/workplans")
 STATUS_VALUES = ("UNPLANNED", "PLANNED", "DONE")
-TABLE_COLUMNS = ("task_id", "task", "status", "plan_id", "owner", "updated_at", "note")
+TABLE_COLUMNS = ("task_id", "task", "status", "plan_id", "updated_at", "note")
 
 
 @dataclass
@@ -22,7 +22,6 @@ class TodoTask:
     task: str
     status: str
     plan_id: str
-    owner: str
     updated_at: str
     note: str
 
@@ -33,7 +32,6 @@ class TodoTask:
             self.task,
             self.status,
             self.plan_id,
-            self.owner,
             self.updated_at,
             self.note,
         ]
@@ -102,7 +100,6 @@ def parse_todo_file(path: Path) -> tuple[list[str], list[TodoTask]]:
                 task=row["task"],
                 status=normalize_status(row["status"]),
                 plan_id=row["plan_id"],
-                owner=row["owner"],
                 updated_at=row["updated_at"],
                 note=row["note"],
             )
@@ -159,7 +156,7 @@ def build_plan_id(existing: set[str]) -> str:
     return candidate
 
 
-def create_plan_files(plan_id: str, owner: str, tasks: list[TodoTask], rationale: list[str]) -> None:
+def create_plan_files(plan_id: str, tasks: list[TodoTask], rationale: list[str]) -> None:
     """Create task_plan/findings/progress markdown files for a new plan."""
     WORKPLAN_DIR.mkdir(parents=True, exist_ok=True)
     task_list = "\n".join(f"- {task.task_id}: {task.task}" for task in tasks)
@@ -178,9 +175,6 @@ def create_plan_files(plan_id: str, owner: str, tasks: list[TodoTask], rationale
                 "",
                 "## Scope",
                 task_list,
-                "",
-                "## Owner",
-                f"- {owner}",
                 "",
                 "## Current Phase",
                 "Phase 1",
@@ -337,13 +331,12 @@ def cmd_quick_plan(args: argparse.Namespace) -> int:
     existing_plan_ids = {task.plan_id for task in tasks if task.plan_id}
     plan_id = args.plan_id or build_plan_id(existing_plan_ids)
 
-    create_plan_files(plan_id=plan_id, owner=args.owner, tasks=selected, rationale=rationale)
+    create_plan_files(plan_id=plan_id, tasks=selected, rationale=rationale)
 
     timestamp = now_iso()
     for task in selected:
         task.status = "PLANNED"
         task.plan_id = plan_id
-        task.owner = args.owner
         task.updated_at = timestamp
         if args.note:
             task.note = args.note
@@ -386,7 +379,6 @@ def cmd_quick_resume(args: argparse.Namespace) -> int:
     plan_id = selected.plan_id
     print(f"Resume task: {selected.task_id} ({selected.task})")
     print(f"Plan: {plan_id}")
-    print(f"Owner: {selected.owner}")
     print(f"- {WORKPLAN_DIR / f'task_plan.{plan_id}.md'}")
     print(f"- {WORKPLAN_DIR / f'findings.{plan_id}.md'}")
     print(f"- {WORKPLAN_DIR / f'progress.{plan_id}.md'}")
@@ -408,8 +400,6 @@ def cmd_set_status(args: argparse.Namespace) -> int:
         task.plan_id = ""
 
     task.status = new_status
-    if args.owner is not None:
-        task.owner = args.owner
     if args.note is not None:
         task.note = args.note
     task.updated_at = now_iso()
@@ -433,7 +423,6 @@ def cmd_bind_task(args: argparse.Namespace) -> int:
 
     task.status = "PLANNED"
     task.plan_id = args.plan_id
-    task.owner = args.owner
     task.updated_at = now_iso()
     if args.note is not None:
         task.note = args.note
@@ -451,7 +440,7 @@ def cmd_view_active(_: argparse.Namespace) -> int:
         print("[plan-tracker] no active PLANNED task")
         return 0
     task = planned[0]
-    print(f"[plan-tracker] active={task.task_id} plan={task.plan_id} owner={task.owner}")
+    print(f"[plan-tracker] active={task.task_id} plan={task.plan_id}")
     return 0
 
 
@@ -469,7 +458,6 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser = subparsers.add_parser("quick-plan", help="Create one plan and bind task(s)")
     plan_parser.add_argument("--task-ids", help="Comma-separated task ids. Omit for auto-select.")
     plan_parser.add_argument("--max-tasks", type=int, default=1, help="Auto-select count when task ids omitted.")
-    plan_parser.add_argument("--owner", default="claude-agent", help="Owner identifier written into todo rows.")
     plan_parser.add_argument("--plan-id", help="Optional explicit plan id.")
     plan_parser.add_argument("--note", help="Optional note written to selected tasks.")
     plan_parser.set_defaults(func=cmd_quick_plan)
@@ -483,14 +471,12 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("--task-id", required=True)
     status_parser.add_argument("--status", required=True, help="UNPLANNED|PLANNED|DONE")
     status_parser.add_argument("--plan-id", help="Required for PLANNED or DONE if task has no plan_id")
-    status_parser.add_argument("--owner", help="Optional owner overwrite")
     status_parser.add_argument("--note", help="Optional note overwrite")
     status_parser.set_defaults(func=cmd_set_status)
 
     bind_parser = subparsers.add_parser("bind-task", help="Bind one task to an active plan")
     bind_parser.add_argument("--task-id", required=True)
     bind_parser.add_argument("--plan-id", required=True)
-    bind_parser.add_argument("--owner", required=True)
     bind_parser.add_argument("--note", help="Optional note overwrite")
     bind_parser.set_defaults(func=cmd_bind_task)
 

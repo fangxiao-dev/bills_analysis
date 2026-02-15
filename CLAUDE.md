@@ -72,7 +72,7 @@ Milestone Status：
 
 当前里程碑的具体待办功能点通过 `plans/` 目录管理：
 
-- `plans/todo_current.md`：当前里程碑下待实现的功能点（结构化表格），固定字段：`task_id/task/status/plan_id/owner/updated_at/note`。
+- `plans/todo_current.md`：当前里程碑下待实现的功能点（结构化表格），固定字段：`task_id/task/status/plan_id/updated_at/note`。
 - 状态机：`UNPLANNED -> PLANNED -> DONE`（互斥）；`PLANNED` 与 `DONE` 必须绑定 `plan_id`。
 - 任务状态与 plan 绑定优先通过命令维护：`python scripts/plan_tracker.py ...`。
 - `plans/workplans/`：每个 plan 对应三文件：`task_plan.<plan_id>.md`、`findings.<plan_id>.md`、`progress.<plan_id>.md`。

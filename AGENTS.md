@@ -123,7 +123,7 @@ git worktree add -b feat/TC-007-batch-delete ../wt-TC-007 main
 cd ../wt-TC-007
 
 # 3. Planning
-python scripts/plan_tracker.py quick-plan --task-ids TC-007 --owner claude-agent
+python scripts/plan_tracker.py quick-plan --task-ids TC-007
 # 或使用 /planning-with-files skill
 
 # 4. Implementation（前后端均可修改）
@@ -170,7 +170,7 @@ git worktree remove ../wt-TC-007
 - 并行开发期间，前端默认对接 `v1` 冻结契约；后端内部重构不得改变 `v1` 对外字段与语义。
 
 ## 5.3 Task Tracking
-- `plans/todo_current.md`：当前里程碑任务主表（结构化字段：`task_id/task/status/plan_id/owner/updated_at/note`）。
+- `plans/todo_current.md`：当前里程碑任务主表（结构化字段：`task_id/task/status/plan_id/updated_at/note`）。
 - 状态机固定：`UNPLANNED -> PLANNED -> DONE`，并要求 `PLANNED` / `DONE` 必须绑定 `plan_id`。
 - `plans/workplans/`：每个 plan 的三文件上下文（`task_plan/findings/progress`）。
 - `plans/todo_future.md`：未来里程碑的功能点，仅记录参考，暂不实现。

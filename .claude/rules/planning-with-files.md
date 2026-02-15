@@ -42,13 +42,11 @@
 ## CLI Contract
 
 - `python scripts/plan_tracker.py list`
-- `python scripts/plan_tracker.py quick-plan --task-ids <ids> --owner <identifier>`
-- `python scripts/plan_tracker.py quick-plan --max-tasks <n> --owner <identifier>`
+- `python scripts/plan_tracker.py quick-plan --task-ids <ids>`
+- `python scripts/plan_tracker.py quick-plan --max-tasks <n>`
 - `python scripts/plan_tracker.py quick-resume [--plan-id <id> | --task-id <id>]`
 - `python scripts/plan_tracker.py set-status --task-id <id> --status <UNPLANNED|PLANNED|DONE>`
-- `python scripts/plan_tracker.py bind-task --task-id <id> --plan-id <id> --owner <identifier>`
-
-注意：`--owner` 用于标识任务执行者（如 `claude-agent`），不再使用 `agent-a`/`agent-b` 的命名方式。
+- `python scripts/plan_tracker.py bind-task --task-id <id> --plan-id <id>`
 
 ## Audit & Handoff
 

@@ -88,7 +88,7 @@ git worktree add -b feat/TC-007-batch-delete ../wt-TC-007 main
 
 | 文件 | 用途 |
 |------|------|
-| `task_plan.<plan_id>.md` | 任务规划：目标、步骤、owner |
+| `task_plan.<plan_id>.md` | 任务规划：目标、步骤 |
 | `findings.<plan_id>.md` | 调研发现：技术决策、风险记录、现有代码分析 |
 | `progress.<plan_id>.md` | 执行进度：已完成/进行中/阻塞项/下一步 |
 
@@ -168,7 +168,6 @@ feat/<task_id>-<slug>
 | `task` | 任务描述 |
 | `status` | `UNPLANNED` / `PLANNED` / `DONE` |
 | `plan_id` | 绑定的 plan（`PLANNED`/`DONE` 必填） |
-| `owner` | 执行者标识 |
 | `updated_at` | 最后更新时间 |
 | `note` | 备注（含跨 task 依赖声明，如 `blocked by TC-008`） |
 
@@ -179,7 +178,7 @@ feat/<task_id>-<slug>
 plan_tracker.py list
 
 # 创建 plan 并绑定 task
-plan_tracker.py quick-plan --task-ids TC-007,TC-008 --owner <identifier>
+plan_tracker.py quick-plan --task-ids TC-007,TC-008
 
 # 恢复执行
 plan_tracker.py quick-resume [--plan-id <id> | --task-id <id>]
@@ -194,7 +193,7 @@ plan_tracker.py set-status --task-id TC-007 --status DONE
 
 ```
 plans/workplans/
-├── task_plan.20260215-1030.md     # 规划：目标、步骤、owner
+├── task_plan.20260215-1030.md     # 规划：目标、步骤
 ├── findings.20260215-1030.md      # 调研：技术决策、风险、现有代码
 └── progress.20260215-1030.md      # 进度：完成/进行中/阻塞/下一步
 ```
