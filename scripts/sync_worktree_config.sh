@@ -16,6 +16,8 @@ SYNC_ITEMS=(
   ".agents/"
   ".claude/rules/"
   ".claude/skills/"
+  ".env"
+  "frontend/.env.local"
 )
 
 # ── Parse args ──────────────────────────────────────────────────────
