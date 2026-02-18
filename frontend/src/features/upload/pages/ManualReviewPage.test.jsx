@@ -330,7 +330,7 @@ describe("ManualReviewPage", () => {
     });
 
     expect(screen.getByText("Type")).toBeInTheDocument();
-    expect(screen.getByText("Final Consistency")).toBeInTheDocument();
+    expect(screen.getByText("Receiver OK")).toBeInTheDocument();
     const typeSelect = screen.getByLabelText("OFFICE Review Items-type-office:invoice-1");
     expect(typeSelect).toBeInTheDocument();
     fireEvent.change(typeSelect, { target: { value: "Miete" } });
