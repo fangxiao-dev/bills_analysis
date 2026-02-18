@@ -18,7 +18,8 @@ Operational skill for the full task branch lifecycle in this repo:
 1) create task worktree + sync shared config,
 2) initialize backend and frontend environments,
 3) sync latest mature trunk (`main`) + run regression gate,
-4) merge task branch back into `main`.
+4) update planning artifacts (`plans/workplans/*` + `plans/todo_current.md`),
+5) merge task branch back into `main`.
 
 This skill is execution-oriented. For read-only cross-branch inspection, use `cross-worktree-sync`.
 
@@ -56,6 +57,7 @@ Path policy:
 - Mode: semi-automatic checklist with stop points.
 - Always show and run sync dry-run before sync apply.
 - Never continue to Phase 4 unless all required regression checks pass.
+- Never continue to Phase 5 unless plan/progress/todo updates are complete.
 - If dirty-tree risk is detected at a critical step, stop and request user confirmation.
 
 ## Preflight checks (must pass before Phase 1)
@@ -176,7 +178,30 @@ Behavior:
 - If merge conflict occurs, stop and report conflict files.
 - If any required regression command fails, stop and do not enter Phase 4.
 
-## Phase 4: Merge task branch back to `main`
+## Phase 4: Update Plan Files Before Trunk Merge (mandatory)
+
+Goal: persist task completion evidence before merging feature branch into trunk.
+
+Required updates (run from task worktree):
+
+```bash
+# Update task progress and findings files for bound plan_id
+# e.g. plans/workplans/progress.<plan_id>.md / findings.<plan_id>.md
+
+# Mark task as DONE with plan_id in todo tracker
+python scripts/plan_tracker.py set-status --task-id <task_id> --status DONE --plan-id <plan_id>
+```
+
+Behavior:
+
+- Phase 4 is mandatory after regression gate and before trunk merge.
+- Required evidence:
+  - `plans/workplans/progress.<plan_id>.md` updated with final execution/testing notes.
+  - `plans/workplans/findings.<plan_id>.md` updated with final decisions/risks (if any).
+  - `plans/todo_current.md` updated to `DONE` with matching `plan_id` and timestamp.
+- If any required planning file update is missing, Phase 5 is forbidden.
+
+## Phase 5: Merge task branch back to `main`
 
 Goal: merge validated task branch into mature trunk.
 
@@ -204,7 +229,8 @@ git worktree prune
 
 Behavior:
 
-- If regression gate is not green, Phase 4 is forbidden.
+- If regression gate is not green, Phase 5 is forbidden.
+- If planning updates from Phase 4 are incomplete, Phase 5 is forbidden.
 - If merge conflict occurs, stop and provide conflict summary.
 - Cleanup is optional and only allowed if task worktree is clean.
 
