@@ -394,10 +394,6 @@ button {
   vertical-align: middle;
 }
 
-.review-edit-table tr.review-row-needs-review td {
-  background: linear-gradient(90deg, rgba(245, 158, 11, 0.08), rgba(245, 158, 11, 0.02));
-}
-
 .source-switch {
   display: inline-flex;
   border: 1px solid #d5deee;

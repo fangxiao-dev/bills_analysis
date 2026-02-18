@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ManualReviewPage } from "./ManualReviewPage";
@@ -164,9 +164,9 @@ describe("ManualReviewPage", () => {
     openMock.mockRestore();
   });
 
-  it("keeps submit disabled before merge source is selected", () => {
+  it("keeps submit enabled in local source mode without selecting excel", () => {
     renderPage();
-    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
     expect(screen.queryByText("Merge Status")).not.toBeInTheDocument();
   });
 
@@ -233,6 +233,27 @@ describe("ManualReviewPage", () => {
     expect(await screen.findByDisplayValue("D:\\merge\\monthly.xlsx")).toBeInTheDocument();
   });
 
+  it("submits with empty monthly path when local source has no selected excel", async () => {
+    const actions = {
+      submitReviewOnly: vi.fn(async () => true),
+      queueMergeOnly: vi.fn(async () => true),
+      fetchReviewRows: vi.fn(async () => []),
+      resolveMonthlyPathFromLocal: vi.fn(async () => "D:\\merge\\monthly.xlsx"),
+      retryMerge: vi.fn(async () => true),
+    };
+
+    renderPage({ actions });
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => {
+      expect(actions.queueMergeOnly).toHaveBeenCalledWith({
+        mode: "overwrite",
+        monthly_excel_path: "",
+        metadata: {},
+      });
+    });
+  });
+
   it("renders backend validation message from systemError", () => {
     renderPage({
       state: {
@@ -273,6 +294,57 @@ describe("ManualReviewPage", () => {
 
     expect(bruttoInput.className).toContain("review-cell-low-confidence");
     expect(nettoInput.className).not.toContain("review-cell-low-confidence");
+  });
+
+  it("renders office type selector and sends type/receiver_ok in review payload", async () => {
+    const actions = {
+      submitReviewOnly: vi.fn(async () => true),
+      queueMergeOnly: vi.fn(async () => true),
+      fetchReviewRows: vi.fn(async () => []),
+      resolveMonthlyPathFromLocal: vi.fn(async () => "D:\\merge\\monthly.xlsx"),
+      retryMerge: vi.fn(async () => true),
+    };
+
+    renderPage({
+      actions,
+      state: {
+        ...buildBaseContext().state,
+        reviewRows: [
+          {
+            row_id: "office:invoice-1",
+            category: "office",
+            filename: "office-1.pdf",
+            result: {
+              type: "Service&Andere",
+              sender: "Vendor A",
+              brutto: "100.00",
+              netto: "90.00",
+              tax_id: "DE123",
+              receiver_ok: true,
+              run_date: "10/02/2026",
+            },
+            score: {},
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByText("Type")).toBeInTheDocument();
+    expect(screen.getByText("Receiver OK")).toBeInTheDocument();
+    const typeSelect = screen.getByLabelText("OFFICE Review Items-type-office:invoice-1");
+    expect(typeSelect).toBeInTheDocument();
+    fireEvent.change(typeSelect, { target: { value: "Miete" } });
+    expect(screen.getByDisplayValue("True")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => {
+      expect(actions.submitReviewOnly).toHaveBeenCalled();
+    });
+
+    const submittedRows = actions.submitReviewOnly.mock.calls[0][0];
+    expect(submittedRows[0].result.type).toBe("Miete");
+    expect(submittedRows[0].result.receiver_ok).toBe(true);
+    expect(submittedRows[0].result.receiver).toBeUndefined();
   });
 
   it("shows localized tooltip on view action", () => {

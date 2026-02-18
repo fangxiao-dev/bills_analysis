@@ -106,7 +106,8 @@
   "review.columns.brutto": "Brutto",
   "review.columns.netto": "Netto",
   "review.columns.run_date": "Run Date",
+  "review.columns.type": "Type",
   "review.columns.sender": "Sender",
   "review.columns.tax_id": "Tax ID",
-  "review.columns.receiver": "Receiver"
+  "review.columns.receiver_ok": "Receiver OK"
 }

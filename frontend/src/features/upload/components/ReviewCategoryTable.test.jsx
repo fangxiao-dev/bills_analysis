@@ -37,9 +37,9 @@ describe("ReviewCategoryTable low-confidence highlight", () => {
     expect(nettoInput.className).not.toContain("review-cell-low-confidence");
   });
 
-  it("does not highlight when score is missing or empty", () => {
+  it("highlights empty editable value even when score is missing", () => {
     const rows = [
-      { id: "row-2", filename: "a.pdf", brutto: "5.00", netto: "4.20", score: {} },
+      { id: "row-2", filename: "a.pdf", brutto: "-", netto: "4.20", score: {} },
     ];
 
     render(
@@ -53,7 +53,7 @@ describe("ReviewCategoryTable low-confidence highlight", () => {
     );
 
     const bruttoInput = screen.getByLabelText("BAR-brutto-row-2");
-    expect(bruttoInput.className).not.toContain("review-cell-low-confidence");
+    expect(bruttoInput.className).toContain("review-cell-low-confidence");
   });
 
   it("falls back to total_tax score for brutto/netto when score is -1", () => {
@@ -85,7 +85,7 @@ describe("ReviewCategoryTable low-confidence highlight", () => {
     expect(nettoInput.className).toContain("review-cell-low-confidence");
   });
 
-  it("adds row highlight class when any editable field is low-confidence", () => {
+  it("does not add row-level highlight class when field is problematic", () => {
     const rows = [
       {
         id: "row-4",
@@ -107,6 +107,64 @@ describe("ReviewCategoryTable low-confidence highlight", () => {
     );
 
     const tr = container.querySelector("tbody tr");
-    expect(tr?.className).toContain("review-row-needs-review");
+    expect(tr?.className || "").toBe("");
+  });
+
+  it("highlights check field when value is False", () => {
+    const boolColumns = [
+      { key: "filename", label: "File", readOnly: true },
+      { key: "receiver_ok", label: "Receiver OK" },
+    ];
+    const rows = [
+      {
+        id: "row-5",
+        filename: "d.pdf",
+        receiver_ok: "False",
+        score: {},
+      },
+    ];
+
+    render(
+      <ReviewCategoryTable
+        title="OFFICE"
+        description="test"
+        rows={rows}
+        columns={boolColumns}
+        onChangeCell={vi.fn()}
+      />
+    );
+
+    const receiverInput = screen.getByLabelText("OFFICE-receiver_ok-row-5");
+    expect(receiverInput.className).toContain("review-cell-low-confidence");
+  });
+
+  it("renders select input for configured column and keeps current backend value", () => {
+    const selectColumns = [
+      { key: "filename", label: "File", readOnly: true },
+      { key: "type", label: "Type", inputType: "select", options: ["Miete", "Service&Andere"] },
+    ];
+    const rows = [
+      {
+        id: "row-6",
+        filename: "e.pdf",
+        type: "CustomType",
+        score: {},
+      },
+    ];
+
+    render(
+      <ReviewCategoryTable
+        title="OFFICE"
+        description="test"
+        rows={rows}
+        columns={selectColumns}
+        onChangeCell={vi.fn()}
+      />
+    );
+
+    const typeSelect = screen.getByLabelText("OFFICE-type-row-6");
+    expect(typeSelect.tagName).toBe("SELECT");
+    expect(typeSelect).toHaveValue("CustomType");
+    expect(screen.getByRole("option", { name: "CustomType" })).toBeInTheDocument();
   });
 });
