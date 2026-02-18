@@ -106,7 +106,8 @@
   "review.columns.brutto": "含税金额",
   "review.columns.netto": "净额",
   "review.columns.run_date": "日期",
+  "review.columns.type": "类型",
   "review.columns.sender": "发件人",
   "review.columns.tax_id": "税号",
-  "review.columns.receiver": "收件人"
+  "review.columns.receiver_ok": "收件人一致"
 }

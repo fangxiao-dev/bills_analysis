@@ -4,6 +4,48 @@
 export const DEFAULT_REVIEW_THRESHOLD = 0.5;
 
 /**
+ * Determine whether one editable field has an empty-like value.
+ * @param {unknown} value
+ */
+export function isEmptyLikeValue(value) {
+  if (value == null) {
+    return true;
+  }
+  const text = String(value).trim();
+  return !text || text === "-";
+}
+
+/**
+ * Determine whether one editable field is a check/boolean field.
+ * @param {string} fieldKey
+ */
+export function isCheckField(fieldKey) {
+  const key = String(fieldKey || "").toLowerCase();
+  return key === "receiver_ok" || key.endsWith("_ok") || key.startsWith("is_");
+}
+
+/**
+ * Parse boolean-like text used in review inputs.
+ * @param {unknown} value
+ */
+export function parseBooleanLike(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text || text === "-") {
+    return null;
+  }
+  if (["true", "yes", "1", "ok"].includes(text)) {
+    return true;
+  }
+  if (["false", "no", "0"].includes(text)) {
+    return false;
+  }
+  return null;
+}
+
+/**
  * Check whether one field in a review row should be flagged for manual review.
  * For brutto/netto, score -1 falls back to total_tax.
  * @param {Record<string, unknown>} row
@@ -28,11 +70,21 @@ export function isLowConfidenceField(row, fieldKey, threshold = DEFAULT_REVIEW_T
 }
 
 /**
- * Check whether a row contains any editable field that needs manual review.
+ * Check whether one field should be highlighted:
+ * - low confidence
+ * - empty value
+ * - check field explicitly false
  * @param {Record<string, unknown>} row
- * @param {Array<{ key: string; readOnly?: boolean }>} columns
+ * @param {string} fieldKey
  * @param {number} [threshold]
  */
-export function rowNeedsManualReview(row, columns, threshold = DEFAULT_REVIEW_THRESHOLD) {
-  return columns.some((column) => !column.readOnly && isLowConfidenceField(row, column.key, threshold));
+export function isProblemField(row, fieldKey, threshold = DEFAULT_REVIEW_THRESHOLD) {
+  const value = row?.[fieldKey];
+  if (isEmptyLikeValue(value)) {
+    return true;
+  }
+  if (isCheckField(fieldKey) && parseBooleanLike(value) === false) {
+    return true;
+  }
+  return isLowConfidenceField(row, fieldKey, threshold);
 }

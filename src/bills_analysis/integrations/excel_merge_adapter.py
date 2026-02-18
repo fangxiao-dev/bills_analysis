@@ -78,6 +78,34 @@ def _ensure_daily_monthly_template(monthly_xlsx: Path) -> None:
     wb.save(monthly_xlsx)
 
 
+def _build_office_template_headers() -> list[str]:
+    """Build canonical office monthly-template headers for first-time workbook creation."""
+
+    return [
+        "Datum",
+        "Type",
+        "Rechnung Name",
+        "Brutto",
+        "Netto",
+        "Steuernummer",
+        "Is Receiver OK",
+        "Rechnung Scannen",
+    ]
+
+
+def _ensure_office_monthly_template(monthly_xlsx: Path) -> None:
+    """Create a blank office monthly workbook with canonical headers when target is missing."""
+
+    if monthly_xlsx.exists():
+        return
+    monthly_xlsx.parent.mkdir(parents=True, exist_ok=True)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Office"
+    ws.append(_build_office_template_headers())
+    wb.save(monthly_xlsx)
+
+
 def _sort_daily_rows_by_datum(ws: Any) -> None:
     """Sort data rows by Datum ascending; unparseable Datum values are placed last."""
 
@@ -215,18 +243,24 @@ def merge_office_excel(
         monthly_xlsx=monthly_xlsx,
     )
 
+    _ensure_office_monthly_template(monthly_xlsx)
     shutil.copy2(monthly_xlsx, out_path)
     wb = load_workbook(out_path)
     ws = wb.active
+    existing_monthly_last_row = ws.max_row
+    consumed_existing_rows: set[int] = set()
 
     def _find_row_by_datum(datum: Any) -> int | None:
-        """Resolve target row by Datum value for overwrite mode."""
+        """Resolve one existing target row by Datum for overwrite mode without reusing appended rows."""
 
         target = normalize_date(datum) or str(datum).strip()
-        for row_idx in range(2, ws.max_row + 1):
+        for row_idx in range(2, existing_monthly_last_row + 1):
+            if row_idx in consumed_existing_rows:
+                continue
             cell_value = ws.cell(row=row_idx, column=1).value
             cell_norm = normalize_date(cell_value) or str(cell_value).strip()
             if cell_norm == target:
+                consumed_existing_rows.add(row_idx)
                 return row_idx
         return None
 

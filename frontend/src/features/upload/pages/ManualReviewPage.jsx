@@ -12,6 +12,23 @@ import { useUploadFlowContext } from "../state/UploadFlowContext";
 const DEFAULT_MONTHLY_EXCEL_PATH = "";
 const SOURCE_LOCAL_FILE = "local_file";
 const SOURCE_LARK_SHEET = "lark_sheet";
+const OFFICE_TYPE_OPTIONS = [
+  "asiatico",
+  "Fuji",
+  "JFC",
+  "Ramenlppin Europa",
+  "Lebensmittel&Bedarf",
+  "Miete",
+  "Strom&Gas&Internet",
+  "Bar Ausgabe",
+  "Personalkosten",
+  "Gerät&Geschirr",
+  "Reparatur",
+  "Getränke",
+  "Bank&SumUp&Linzen",
+  "Service&Andere",
+  "Unternehmen",
+];
 
 /**
  * Manual review page for editing row-level fields and controlling merge actions.
@@ -46,11 +63,12 @@ export function ManualReviewPage() {
   const officeColumns = useMemo(
     () => [
       { key: "filename", label: t("review.table.file"), readOnly: true },
+      { key: "type", label: t("review.columns.type"), inputType: "select", options: OFFICE_TYPE_OPTIONS },
       { key: "sender", label: t("review.columns.sender") },
       { key: "brutto", label: t("review.columns.brutto") },
       { key: "netto", label: t("review.columns.netto") },
       { key: "tax_id", label: t("review.columns.tax_id") },
-      { key: "receiver", label: t("review.columns.receiver") },
+      { key: "receiver_ok", label: t("review.columns.receiver_ok") },
     ],
     [t],
   );
@@ -111,7 +129,7 @@ export function ManualReviewPage() {
 
   const hasBatch = Boolean(state.batch?.batch_id);
   const hasSubmittedReview = state.reviewSubmitted || (state.batch?.review_rows_count || 0) > 0;
-  const hasMergeSource = monthlyPathSource === SOURCE_LOCAL_FILE ? Boolean(selectedLocalFile) : Boolean(larkSheetLink.trim() || monthlyPath.trim());
+  const hasMergeSource = monthlyPathSource === SOURCE_LOCAL_FILE ? true : Boolean(larkSheetLink.trim() || monthlyPath.trim());
   const submitDisabled = !hasBatch || state.batch?.status !== "review_ready" || flags.isBusy || !totalRows || !hasMergeSource;
   const showRetryMerge = state.batch?.status === "failed" && hasSubmittedReview;
 
@@ -135,7 +153,7 @@ export function ManualReviewPage() {
       return;
     }
 
-    let resolvedMonthlyPath = monthlyPath.trim();
+    let resolvedMonthlyPath = monthlyPathSource === SOURCE_LOCAL_FILE && !selectedLocalFile ? "" : monthlyPath.trim();
     if (monthlyPathSource === SOURCE_LOCAL_FILE && selectedLocalFile) {
       const uploadedPath = await actions.resolveMonthlyPathFromLocal(selectedLocalFile);
       if (!uploadedPath || isNonRealPath(uploadedPath)) {
@@ -455,11 +473,12 @@ function buildDraftRowsFromFiles(files, runDate, previous) {
         id: file.id,
         category: "office",
         filename: file.name,
+        type: current?.type ?? "-",
         sender: current?.sender ?? "-",
         brutto: current?.brutto ?? "-",
         netto: current?.netto ?? "-",
         tax_id: current?.tax_id ?? "-",
-        receiver: current?.receiver ?? "-",
+        receiver_ok: current?.receiver_ok ?? "-",
         score: current?.score ?? {},
         raw_result: current?.raw_result ?? {},
         preview_path: current?.preview_path ?? "",
@@ -531,11 +550,12 @@ function buildDraftRowsFromBackend(rows, runDate, previous) {
     if (category === "office") {
       draft.office.push({
         ...common,
+        type: current?.type ?? normalizeCellValue(result.type),
         sender: current?.sender ?? normalizeCellValue(result.sender),
         brutto: current?.brutto ?? normalizeCellValue(result.brutto),
         netto: current?.netto ?? normalizeCellValue(result.netto),
         tax_id: current?.tax_id ?? normalizeCellValue(result.tax_id),
-        receiver: current?.receiver ?? normalizeCellValue(result.receiver),
+        receiver_ok: current?.receiver_ok ?? normalizeReceiverOkValue(result.receiver_ok),
       });
     }
   });
@@ -563,11 +583,12 @@ function composeReviewRows(draft) {
         baseResult.netto = row.netto;
         baseResult.run_date = row.run_date;
       } else if (category === "office") {
+        baseResult.type = row.type;
         baseResult.sender = row.sender;
         baseResult.brutto = row.brutto;
         baseResult.netto = row.netto;
         baseResult.tax_id = row.tax_id;
-        baseResult.receiver = row.receiver;
+        baseResult.receiver_ok = parseReceiverOkValue(row.receiver_ok);
       }
 
       const payload = {
@@ -759,4 +780,36 @@ function normalizeCellValue(value, fallback = "-") {
   }
   const text = String(value).trim();
   return text || fallback;
+}
+
+/**
+ * Normalize receiver_ok value for editable office table.
+ * @param {unknown} value
+ */
+function normalizeReceiverOkValue(value) {
+  if (typeof value === "boolean") {
+    return value ? "True" : "False";
+  }
+  return normalizeCellValue(value);
+}
+
+/**
+ * Parse receiver_ok from user-edited cell text into boolean/nullable payload.
+ * @param {unknown} value
+ */
+function parseReceiverOkValue(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text || text === "-") {
+    return null;
+  }
+  if (["true", "yes", "1", "ok"].includes(text)) {
+    return true;
+  }
+  if (["false", "no", "0"].includes(text)) {
+    return false;
+  }
+  return null;
 }

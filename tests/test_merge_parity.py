@@ -185,3 +185,70 @@ def test_office_merge_append_parity() -> None:
     assert ws.max_row == 3
     assert ws.cell(row=3, column=2).value == "Miete"
     assert ws.cell(row=3, column=3).value == "Metro"
+
+
+def test_office_merge_creates_missing_monthly_template() -> None:
+    """Office merge should create a canonical monthly workbook when target file is missing."""
+
+    root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    validated = root / "validated_office.xlsx"
+    monthly = root / "missing_monthly_office.xlsx"
+
+    _new_book(
+        validated,
+        ["Datum", "Type", "Rechnung Name", "need review", "Rechnung Scannen"],
+        [["04/02/2026", "Miete", "Metro", False, "check pdf"]],
+    )
+    assert not monthly.exists()
+
+    out_path = merge_office(validated, monthly, out_dir=root, append=True)
+    assert monthly.exists()
+    wb_monthly = load_workbook(monthly)
+    ws_monthly = wb_monthly.active
+    headers = [cell.value for cell in ws_monthly[1]]
+    assert headers == [
+        "Datum",
+        "Type",
+        "Rechnung Name",
+        "Brutto",
+        "Netto",
+        "Steuernummer",
+        "Is Receiver OK",
+        "Rechnung Scannen",
+    ]
+
+    wb_out = load_workbook(out_path)
+    ws_out = wb_out.active
+    assert ws_out.max_row == 2
+    assert ws_out.cell(row=2, column=2).value == "Miete"
+    assert ws_out.cell(row=2, column=3).value == "Metro"
+
+
+def test_office_merge_overwrite_keeps_multiple_same_datum_rows_from_validated() -> None:
+    """Office overwrite mode should not collapse multiple validated rows sharing the same Datum."""
+
+    root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    validated = root / "validated_office.xlsx"
+    monthly = root / "monthly_office.xlsx"
+
+    _new_book(
+        validated,
+        ["Datum", "Type", "Rechnung Name", "need review", "Rechnung Scannen"],
+        [
+            ["04/02/2026", "Miete", "Metro", False, "check pdf"],
+            ["04/02/2026", "Strom", "EON", False, "check pdf"],
+            ["04/02/2026", "Internet", "Telekom", False, "check pdf"],
+        ],
+    )
+    _new_book(
+        monthly,
+        ["Datum", "Type", "Rechnung Name", "Rechnung Scannen"],
+        [],
+    )
+
+    out_path = merge_office(validated, monthly, out_dir=root, append=False)
+    wb_out = load_workbook(out_path)
+    ws_out = wb_out.active
+    assert ws_out.max_row == 4
+    names = [ws_out.cell(row=row_idx, column=3).value for row_idx in range(2, 5)]
+    assert names == ["Metro", "EON", "Telekom"]

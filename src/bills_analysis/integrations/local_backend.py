@@ -87,6 +87,31 @@ def _to_excel_hyperlink(value: Any) -> str | None:
         return str(path)
 
 
+def _resolve_receiver_ok(office_info: dict[str, Any]) -> bool | None:
+    """Normalize Office receiver consistency output to bool using model output and configurable expected receiver."""
+
+    receiver_ok = office_info.get("receiver_ok")
+    if isinstance(receiver_ok, bool):
+        return receiver_ok
+    if isinstance(receiver_ok, str):
+        text = receiver_ok.strip().lower()
+        if text in {"true", "yes", "1", "ok"}:
+            return True
+        if text in {"false", "no", "0"}:
+            return False
+
+    receiver_value = office_info.get("receiver")
+    if not isinstance(receiver_value, str):
+        return None
+    receiver_text = receiver_value.strip()
+    if not receiver_text:
+        return None
+    expected_receiver = os.getenv("OFFICE_EXPECTED_RECEIVER", "Ramen Ippin Dortmund").strip()
+    if not expected_receiver:
+        return None
+    return receiver_text.casefold() == expected_receiver.casefold()
+
+
 class LocalPipelineBackend:
     """Local backend adapter that executes preprocess + extraction flow."""
 
@@ -287,7 +312,7 @@ class LocalPipelineBackend:
             office_info = _extract_office_semantics(distilled)
             row["result"]["type"] = office_info.get("purpose")
             row["result"]["sender"] = office_info.get("sender")
-            row["result"]["receiver"] = office_info.get("receiver")
+            row["result"]["receiver_ok"] = _resolve_receiver_ok(office_info)
         except Exception as exc:
             row["semantic_error"] = str(exc)
 
@@ -302,13 +327,12 @@ class LocalPipelineBackend:
         out_dir = self.root / batch.batch_id
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        monthly_excel_path = payload.get("monthly_excel_path")
-        if not monthly_excel_path:
-            raise ValueError("monthly_excel_path is required for merge")
-        monthly_excel = Path(str(monthly_excel_path))
+        monthly_excel = self._resolve_monthly_excel_path(
+            batch=batch,
+            payload=payload,
+            out_dir=out_dir,
+        )
         append_mode = str(payload.get("mode", "overwrite")) == "append"
-        if batch.batch_type.value != "daily" and not monthly_excel.exists():
-            raise ValueError(f"monthly_excel_path not found: {monthly_excel}")
 
         validated_excel = out_dir / f"validated_for_merge_{int(datetime.now().timestamp())}.xlsx"
         if batch.batch_type.value == "daily":
@@ -357,6 +381,20 @@ class LocalPipelineBackend:
             "output_abs_path": merged_abs_path,
             "merge_mode": str(payload.get("mode", "overwrite")),
         }
+
+    def _resolve_monthly_excel_path(
+        self,
+        *,
+        batch: BatchRecord,
+        payload: dict[str, Any],
+        out_dir: Path,
+    ) -> Path:
+        """Resolve merge target monthly workbook path, defaulting to batch-local auto template path."""
+
+        raw_monthly_excel_path = payload.get("monthly_excel_path")
+        if isinstance(raw_monthly_excel_path, str) and raw_monthly_excel_path.strip():
+            return Path(raw_monthly_excel_path.strip())
+        return out_dir / "merge_source" / f"auto_{batch.batch_type.value}_monthly.xlsx"
 
     def _write_daily_validated_excel(self, batch: BatchRecord, out_path: Path) -> None:
         """Build daily validated workbook from review rows using legacy mapper style logic."""

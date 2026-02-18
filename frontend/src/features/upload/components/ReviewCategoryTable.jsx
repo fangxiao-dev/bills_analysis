@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { isLowConfidenceField, rowNeedsManualReview } from "../utils/reviewConfidence";
+import { isProblemField } from "../utils/reviewConfidence";
 
 /**
  * Editable review table for one category.
@@ -8,7 +8,7 @@ import { isLowConfidenceField, rowNeedsManualReview } from "../utils/reviewConfi
  *  title: string;
  *  description: string;
  *  rows: Array<Record<string, string>>;
- *  columns: Array<{ key: string; label: string; readOnly?: boolean }>;
+ *  columns: Array<{ key: string; label: string; readOnly?: boolean; inputType?: "text" | "select"; options?: Array<string | { value: string; label?: string }> }>;
  *  onChangeCell: (rowId: string, key: string, value: string) => void;
  *  onViewRow?: (row: Record<string, string>) => void;
  * }} props
@@ -39,17 +39,30 @@ export function ReviewCategoryTable({ title, description, rows, columns, onChang
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id} className={rowNeedsManualReview(row, columns) ? "review-row-needs-review" : ""}>
+              <tr key={row.id}>
                 {columns.map((column) => (
                   <td key={`${row.id}-${column.key}`}>
                     {column.readOnly ? (
                       <span className="text-ledger-ink">{row[column.key]}</span>
+                    ) : column.inputType === "select" ? (
+                      <select
+                        value={row[column.key] ?? ""}
+                        onChange={(event) => onChangeCell(row.id, column.key, event.target.value)}
+                        className={`review-cell-input${isProblemField(row, column.key) ? " review-cell-low-confidence" : ""}`}
+                        aria-label={`${title}-${column.key}-${row.id}`}
+                      >
+                        {buildSelectOptions(row[column.key], column.options).map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
                       <input
                         type="text"
                         value={row[column.key] ?? ""}
                         onChange={(event) => onChangeCell(row.id, column.key, event.target.value)}
-                        className={`review-cell-input${isLowConfidenceField(row, column.key) ? " review-cell-low-confidence" : ""}`}
+                        className={`review-cell-input${isProblemField(row, column.key) ? " review-cell-low-confidence" : ""}`}
                         aria-label={`${title}-${column.key}-${row.id}`}
                       />
                     )}
@@ -75,4 +88,23 @@ export function ReviewCategoryTable({ title, description, rows, columns, onChang
       </div>
     </section>
   );
+}
+
+/**
+ * Build select options while preserving one existing non-standard value from backend payload.
+ * @param {unknown} currentValue
+ * @param {Array<string | { value: string; label?: string }> | undefined} options
+ */
+function buildSelectOptions(currentValue, options) {
+  const normalized = (options || []).map((option) => {
+    if (typeof option === "string") {
+      return { value: option, label: option };
+    }
+    return { value: option.value, label: option.label || option.value };
+  });
+  const value = String(currentValue ?? "").trim();
+  if (value && !normalized.some((item) => item.value === value)) {
+    return [{ value, label: value }, ...normalized];
+  }
+  return normalized;
 }

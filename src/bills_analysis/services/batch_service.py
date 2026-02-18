@@ -84,8 +84,6 @@ class BatchService:
         if batch is None:
             raise KeyError(batch_id)
         monthly_excel_path = req.monthly_excel_path or batch.artifacts.get("monthly_excel_path")
-        if not monthly_excel_path:
-            raise ValueError("monthly_excel_path is required or upload via /merge-source/local first")
         payload = req.model_dump()
         payload["monthly_excel_path"] = monthly_excel_path
         task = QueueTask.new(

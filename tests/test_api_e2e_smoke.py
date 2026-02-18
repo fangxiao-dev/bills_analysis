@@ -125,6 +125,7 @@ def _install_mock_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
             "purpose": "office-cost",
             "sender": str(distilled_fields.get("sender") or "Vendor GmbH"),
             "receiver": "Restaurant GmbH",
+            "receiver_ok": True,
         }
 
     monkeypatch.setattr("bills_analysis.integrations.local_backend._compress_pdf_for_archive", fake_compress)

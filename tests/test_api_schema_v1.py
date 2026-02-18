@@ -413,6 +413,31 @@ def test_merge_source_local_upload_and_merge_fallback() -> None:
         assert merge_res.json()["task_type"] == "merge_batch"
 
 
+def test_merge_without_monthly_path_is_accepted_for_auto_template() -> None:
+    """Merge queue endpoint should accept missing monthly path for backend auto-template flow."""
+
+    TestClient, app = _get_test_client_and_app()
+    with TestClient(app) as client:
+        create_res = client.post(
+            "/v1/batches",
+            json={
+                "type": "daily",
+                "run_date": "04/02/2026",
+                "inputs": [{"path": "a.pdf", "category": "bar"}],
+                "metadata": {},
+            },
+        )
+        assert create_res.status_code == 200
+        batch_id = create_res.json()["batch_id"]
+
+        merge_res = client.post(
+            f"/v1/batches/{batch_id}/merge",
+            json={"mode": "overwrite", "metadata": {}},
+        )
+        assert merge_res.status_code == 200
+        assert merge_res.json()["task_type"] == "merge_batch"
+
+
 def test_merge_source_local_invalid_file_rejected() -> None:
     """Merge source upload should reject non-Excel file types."""
 
@@ -782,6 +807,106 @@ def test_local_backend_daily_merge_creates_missing_monthly_and_supports_append()
     assert second_merged.max_row == 3
     assert second_merged.cell(row=2, column=1).value.strftime("%d/%m/%Y") == "04/02/2026"
     assert second_merged.cell(row=3, column=1).value.strftime("%d/%m/%Y") == "04/02/2026"
+
+
+def test_local_backend_office_merge_auto_creates_monthly_template_and_supports_append() -> None:
+    """Office merge should auto-create missing monthly workbook and honor append mode."""
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    req = CreateBatchRequest(
+        type="office",
+        run_date="04/02/2026",
+        inputs=[{"path": str(test_root / "dummy.pdf"), "category": "office"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    batch.review_rows = [
+        {
+            "row_id": "row-0001",
+            "category": "office",
+            "filename": "office.pdf",
+            "result": {
+                "run_date": "04/02/2026",
+                "type": "Miete",
+                "sender": "Metro",
+                "brutto": "123.45",
+                "netto": "100.00",
+                "tax_id": "DE123",
+                "receiver_ok": True,
+            },
+            "score": {"brutto": 0.95, "netto": 0.95},
+            "preview_path": str(test_root / "preview.pdf"),
+        }
+    ]
+    backend = LocalPipelineBackend(root=test_root / "out")
+    auto_monthly = backend.root / batch.batch_id / "merge_source" / "auto_office_monthly.xlsx"
+
+    first_output = asyncio.run(
+        backend.merge_batch(
+            batch,
+            {"mode": "overwrite"},
+        )
+    )
+    assert auto_monthly.exists()
+    first_merged = load_workbook(Path(first_output["merged_excel_abs_path"])).active
+    assert first_merged.max_row == 2
+
+    second_output = asyncio.run(
+        backend.merge_batch(
+            batch,
+            {"mode": "append", "monthly_excel_path": first_output["merged_excel_abs_path"]},
+        )
+    )
+    second_merged = load_workbook(Path(second_output["merged_excel_abs_path"])).active
+    assert second_merged.max_row == 3
+    assert second_merged.cell(row=2, column=1).value.strftime("%d/%m/%Y") == "04/02/2026"
+    assert second_merged.cell(row=3, column=1).value.strftime("%d/%m/%Y") == "04/02/2026"
+
+
+def test_local_backend_office_overwrite_does_not_collapse_multiple_same_datum_rows() -> None:
+    """Office overwrite should retain multiple reviewed rows sharing the same Datum."""
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+
+    req = CreateBatchRequest(
+        type="office",
+        run_date="15/02/2026",
+        inputs=[{"path": str(test_root / "dummy_1.pdf"), "category": "office"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    batch.review_rows = [
+        {
+            "row_id": "row-0001",
+            "category": "office",
+            "filename": "a.pdf",
+            "result": {"run_date": "15/02/2026", "type": "A", "sender": "Vendor-A", "receiver_ok": True},
+            "score": {},
+        },
+        {
+            "row_id": "row-0002",
+            "category": "office",
+            "filename": "b.pdf",
+            "result": {"run_date": "15/02/2026", "type": "B", "sender": "Vendor-B", "receiver_ok": False},
+            "score": {},
+        },
+        {
+            "row_id": "row-0003",
+            "category": "office",
+            "filename": "c.pdf",
+            "result": {"run_date": "15/02/2026", "type": "C", "sender": "Vendor-C", "receiver_ok": True},
+            "score": {},
+        },
+    ]
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    output = asyncio.run(backend.merge_batch(batch, {"mode": "overwrite"}))
+    merged_ws = load_workbook(Path(output["merged_excel_abs_path"])).active
+    assert merged_ws.max_row == 4
+    merged_senders = [merged_ws.cell(row=row_idx, column=3).value for row_idx in range(2, 5)]
+    assert merged_senders == ["Vendor-A", "Vendor-B", "Vendor-C"]
 
 
 def _openapi_contract_subset(spec: dict) -> dict:
