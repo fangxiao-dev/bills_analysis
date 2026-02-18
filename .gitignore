@@ -22,6 +22,7 @@ Thumbs.db
 # Local data (keep samples out of VCS unless intentional)
 uv.lock
 .env
+.env.docker
 data/**
 
 # ignore

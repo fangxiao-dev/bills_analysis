@@ -15,6 +15,8 @@ def normalize_header(text: Any) -> str:
 
 
 def normalize_date(value: Any) -> str | None:
+    """Normalize diverse date/datetime inputs into DD/MM/YYYY string."""
+
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -39,6 +41,9 @@ def normalize_date(value: Any) -> str | None:
             return dt.strftime("%d/%m/%Y")
         if re.match(r"^\d{2}/\d{2}/\d{4}$", text):
             return text
+        if re.match(r"^\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{2}:\d{2}$", text):
+            dt = datetime.strptime(text, "%d/%m/%Y %H:%M:%S")
+            return dt.strftime("%d/%m/%Y")
         if re.match(r"^\d{2}\.\d{2}\.\d{4}$", text):
             dt = datetime.strptime(text, "%d.%m.%Y")
             return dt.strftime("%d/%m/%Y")
@@ -48,6 +53,8 @@ def normalize_date(value: Any) -> str | None:
 
 
 def parse_datum(value: Any) -> date | None:
+    """Parse Datum-like values into date object for Excel writes/compare."""
+
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -55,6 +62,9 @@ def parse_datum(value: Any) -> date | None:
     if isinstance(value, date):
         return value
     text = str(value).strip()
+    normalized = normalize_date(text)
+    if normalized is not None:
+        text = normalized
     try:
         return datetime.strptime(text, "%d/%m/%Y").date()
     except ValueError:

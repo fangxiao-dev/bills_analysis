@@ -1,0 +1,41 @@
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Node modules (frontend built in Docker)
+frontend/node_modules/
+
+# Generated outputs (mounted as volume)
+outputs/
+
+# Secrets — never bake into image
+.env
+.env.docker
+
+# Lock files not needed in image
+uv.lock
+
+# VCS
+.git/
+.gitignore
+
+# Test scripts (config.json is explicitly COPY'd separately)
+tests/*.py
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Docs/plans (not needed at runtime)
+plans/
+docs/
+*.md
