@@ -64,7 +64,12 @@ def _load_cors_allow_origins() -> list[str]:
         origins = [item.strip() for item in raw.split(",") if item.strip()]
         if origins:
             return origins
-    return ["http://127.0.0.1:5173", "http://localhost:5173"]
+    return [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+    ]
 
 
 app.add_middleware(
@@ -419,6 +424,33 @@ async def download_merge_output(batch_id: str) -> FileResponse:
     output_path = _safe_merge_output_path(batch_id, merge_output)
     media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     return FileResponse(path=output_path, media_type=media, filename=output_path.name)
+
+
+def _mount_frontend_static_files(application: FastAPI) -> None:
+    """Mount Vite build output as SPA static files in Docker environment.
+
+    No-op when FRONTEND_DIST_DIR is not set (local dev with Vite devserver).
+    html=True makes unmatched paths fall back to index.html, supporting
+    react-router-dom client-side routing (e.g. /upload, /review/<id>).
+    Must be called after all @app route registrations to avoid shadowing API routes.
+    """
+    import logging
+
+    from fastapi.staticfiles import StaticFiles
+
+    dist_dir_raw = os.getenv("FRONTEND_DIST_DIR", "").strip()
+    if not dist_dir_raw:
+        return
+    dist_path = Path(dist_dir_raw)
+    if not dist_path.is_dir():
+        logging.getLogger(__name__).warning(
+            "FRONTEND_DIST_DIR=%s does not exist, skipping static file mount.", dist_dir_raw
+        )
+        return
+    application.mount("/", StaticFiles(directory=str(dist_path), html=True), name="frontend")
+
+
+_mount_frontend_static_files(app)
 
 
 def run() -> None:

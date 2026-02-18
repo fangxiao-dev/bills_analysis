@@ -1,0 +1,23 @@
+services:
+  api:
+    build: .
+    image: bills-analysis-app:latest
+    container_name: bills-analysis
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.docker
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      FRONTEND_DIST_DIR: "/app/frontend/dist"
+      RUN_INLINE_WORKER: "true"
+    volumes:
+      - ./outputs:/app/outputs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
