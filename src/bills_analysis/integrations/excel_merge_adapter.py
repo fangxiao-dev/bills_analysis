@@ -89,6 +89,7 @@ def _build_office_template_headers() -> list[str]:
         "Netto",
         "Steuernummer",
         "Is Receiver OK",
+        "Is Receiver Address OK",
         "Rechnung Scannen",
     ]
 

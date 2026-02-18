@@ -11,6 +11,7 @@ from openpyxl import Workbook
 
 from bills_analysis.excel_ops import normalize_date, write_datum_cell
 from bills_analysis.integrations.excel_mapper_adapter import map_daily_json_to_excel
+from bills_analysis.integrations.office_semantics import match_receiver_address, resolve_receiver_ok
 from bills_analysis.models.common import InputFile
 from bills_analysis.models.internal import BatchRecord
 from bills_analysis.services.merge_service import merge_daily, merge_office
@@ -89,27 +90,30 @@ def _to_excel_hyperlink(value: Any) -> str | None:
 
 def _resolve_receiver_ok(office_info: dict[str, Any]) -> bool | None:
     """Normalize Office receiver consistency output to bool using model output and configurable expected receiver."""
+    expected_receiver = os.getenv("OFFICE_EXPECTED_RECEIVER", "Ramen Ippin Dortmund GmbH").strip()
+    expected_address = os.getenv("OFFICE_EXPECTED_RECEIVER_ADDRESS", "Reinoldistr.8 44135 Dortmund").strip()
+    if not expected_receiver or not expected_address:
+        return None
+    return resolve_receiver_ok(
+        office_info,
+        expected_receiver=expected_receiver,
+        expected_address=expected_address,
+    )
 
-    receiver_ok = office_info.get("receiver_ok")
-    if isinstance(receiver_ok, bool):
-        return receiver_ok
-    if isinstance(receiver_ok, str):
-        text = receiver_ok.strip().lower()
-        if text in {"true", "yes", "1", "ok"}:
-            return True
-        if text in {"false", "no", "0"}:
-            return False
 
-    receiver_value = office_info.get("receiver")
-    if not isinstance(receiver_value, str):
+def _resolve_receiver_address_ok(office_info: dict[str, Any]) -> bool | None:
+    """Normalize Office receiver address consistency output to bool using model output and configurable expected address."""
+
+    receiver_address = office_info.get("receiver_address")
+    if not isinstance(receiver_address, str):
         return None
-    receiver_text = receiver_value.strip()
-    if not receiver_text:
+    address_text = receiver_address.strip()
+    if not address_text:
         return None
-    expected_receiver = os.getenv("OFFICE_EXPECTED_RECEIVER", "Ramen Ippin Dortmund").strip()
-    if not expected_receiver:
+    expected_address = os.getenv("OFFICE_EXPECTED_RECEIVER_ADDRESS", "Reinoldistr.8 44135 Dortmund").strip()
+    if not expected_address:
         return None
-    return receiver_text.casefold() == expected_receiver.casefold()
+    return match_receiver_address(address_text, expected_address)
 
 
 class LocalPipelineBackend:
@@ -312,7 +316,10 @@ class LocalPipelineBackend:
             office_info = _extract_office_semantics(distilled)
             row["result"]["type"] = office_info.get("purpose")
             row["result"]["sender"] = office_info.get("sender")
+            row["result"]["receiver_name"] = office_info.get("receiver")
             row["result"]["receiver_ok"] = _resolve_receiver_ok(office_info)
+            row["result"]["receiver_address"] = office_info.get("receiver_address")
+            row["result"]["receiver_address_ok"] = _resolve_receiver_address_ok(office_info)
         except Exception as exc:
             row["semantic_error"] = str(exc)
 
@@ -438,6 +445,7 @@ class LocalPipelineBackend:
             "Netto",
             "Steuernummer",
             "Is Receiver OK",
+            "Is Receiver Address OK",
             "need review",
             "Rechnung Scannen",
         ]
@@ -460,14 +468,15 @@ class LocalPipelineBackend:
                 result.get("netto"),
                 result.get("tax_id"),
                 result.get("receiver_ok"),
+                result.get("receiver_address_ok"),
                 bool(row.get("need review", False)),
                 row.get("preview_path") or row.get("preview_url"),
             ]
             ws.append(excel_row)
             write_datum_cell(ws.cell(row=row_idx, column=1), datum)
-            link = _to_excel_hyperlink(excel_row[8])
+            link = _to_excel_hyperlink(excel_row[9])
             if link:
-                link_cell = ws.cell(row=row_idx, column=9)
+                link_cell = ws.cell(row=row_idx, column=10)
                 link_cell.value = "check pdf"
                 link_cell.hyperlink = link
             row_idx += 1

@@ -9,6 +9,7 @@ from typing import Any, Iterable
 
 import fitz  # PyMuPDF
 
+from bills_analysis.integrations.office_semantics import match_receiver_address, resolve_receiver_ok
 from bills_analysis.vlm import prompts_dict
 
 THRESHOLD_RECEIPT_RATIO = 2.0
@@ -217,6 +218,7 @@ class AzurePipelineAdapter:
                 "netto": None,
                 "tax_id": None,
                 "receiver_ok": None,
+                "receiver_address_ok": None,
             }
             score_kv = {
                 "type": None,
@@ -225,6 +227,7 @@ class AzurePipelineAdapter:
                 "netto": None,
                 "tax_id": None,
                 "receiver_ok": None,
+                "receiver_address_ok": None,
             }
         else:
             extracted_kv = {llm_field: None for llm_field in prompts_dict[purpose]["fields"]}
@@ -291,11 +294,20 @@ class AzurePipelineAdapter:
                 extracted_kv["type"] = office_info.get("purpose")
                 extracted_kv["sender"] = office_info.get("sender")
                 receiver = office_info.get("receiver")
-                correct_receiver = "Ramen Ippin Dortmund"
-                if receiver is not None and receiver != correct_receiver:
-                    extracted_kv["receiver_ok"] = False
+                extracted_kv["receiver_name"] = receiver
+                correct_receiver = "Ramen Ippin Dortmund GmbH"
+                receiver_address = office_info.get("receiver_address")
+                extracted_kv["receiver_address"] = receiver_address
+                expected_address = "Reinoldistr.8 44135 Dortmund"
+                extracted_kv["receiver_ok"] = resolve_receiver_ok(
+                    office_info,
+                    expected_receiver=correct_receiver,
+                    expected_address=expected_address,
+                )
+                if isinstance(receiver_address, str) and receiver_address.strip():
+                    extracted_kv["receiver_address_ok"] = match_receiver_address(receiver_address, expected_address)
                 else:
-                    extracted_kv["receiver_ok"] = True
+                    extracted_kv["receiver_address_ok"] = None
             else:
                 store_name = azure_result.get("store_name").split("\n")[0].split(".")[0]
                 value_map = {
