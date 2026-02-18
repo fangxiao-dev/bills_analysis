@@ -1,4 +1,4 @@
-﻿---
+---
 name: task-worktree-lifecycle
 version: "1.0.0"
 description: End-to-end task worktree lifecycle for WT-PM (create/sync/init/regression/merge).
@@ -18,7 +18,8 @@ Operational skill for the full task branch lifecycle in this repo:
 1) create task worktree + sync shared config,
 2) initialize backend and frontend environments,
 3) sync latest mature trunk (`dev`) + run regression gate,
-4) merge task branch back into `dev`.
+4) update planning artifacts (`plans/workplans/*` + `plans/todo_current.md`),
+5) merge task branch back into `dev`.
 
 This skill is execution-oriented. For read-only cross-branch inspection, use `cross-worktree-sync`.
 
@@ -56,6 +57,7 @@ Path policy:
 - Mode: semi-automatic checklist with stop points.
 - Always show and run sync dry-run before sync apply.
 - Never continue to Phase 4 unless all required regression checks pass.
+- Never continue to Phase 5 unless plan/progress/todo updates are complete.
 - If dirty-tree risk is detected at a critical step, stop and request user confirmation.
 
 ## Preflight checks (must pass before Phase 1)
@@ -64,7 +66,7 @@ Run in current repo root:
 
 ```bash
 git rev-parse --show-toplevel
-git rev-parse --verify dev
+git rev-parse --verify <trunk>
 git status --short
 ```
 
@@ -86,23 +88,35 @@ bash scripts/sync_worktree_config.sh
 bash scripts/sync_worktree_config.sh --apply
 ```
 
+Windows fallback (when `bash` is unavailable or blocked):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/sync_worktree_config.ps1
+powershell -ExecutionPolicy Bypass -File scripts/sync_worktree_config.ps1 -Apply
+```
+
 Notes:
 
 - Dry-run (`bash scripts/sync_worktree_config.sh`) is mandatory and must run before apply.
-- On Windows, if `bash` is unavailable or blocked, run an equivalent PowerShell sync for the same items:
-  - `.agents/`
-  - `.claude/rules/`
-  - `.claude/skills/`
-  - `.env`
-  - `frontend/.env.local`
+- Sync gate is mandatory: if `apply_sync=true`, Phase 1 is successful only after both dry-run and apply succeed.
+- `bash` availability must be checked before sync commands:
+  - if available: run `.sh` dry-run + apply.
+  - if unavailable/blocked: must switch to `scripts/sync_worktree_config.ps1` dry-run + apply.
+- If both `.sh` and `.ps1` sync paths fail, stop immediately and do not continue to Phase 2.
 - If `apply_sync=false`, skip the apply command and report explicitly.
 - If branch/worktree creation fails due permission/sandbox lock, rerun with elevated permission.
 - Do not change branch naming convention as a workaround. Keep `feat/<task_id>-<slug>`.
+- Phase 2 is forbidden until sync gate and post-check pass.
+- Post-check is mandatory (must be included in output evidence):
+  - verify `.agents/`, `.claude/rules/`, `.claude/skills/`, `.env`, `frontend/.env.local` in target worktree.
+  - for files, verify content hash equality; for directories, verify they exist and report file counts.
 - Output summary:
   - created branch
   - created worktree path
+  - sync method (`bash` or `powershell`)
   - sync dry-run result
   - sync apply result (or skipped)
+  - post-check result
 
 ## Phase 2: Initialize environments (backend + frontend)
 
@@ -164,7 +178,30 @@ Behavior:
 - If merge conflict occurs, stop and report conflict files.
 - If any required regression command fails, stop and do not enter Phase 4.
 
-## Phase 4: Merge task branch back to `dev`
+## Phase 4: Update Plan Files Before Trunk Merge (mandatory)
+
+Goal: persist task completion evidence before merging feature branch into trunk.
+
+Required updates (run from task worktree):
+
+```bash
+# Update task progress and findings files for bound plan_id
+# e.g. plans/workplans/progress.<plan_id>.md / findings.<plan_id>.md
+
+# Mark task as DONE with plan_id in todo tracker
+python scripts/plan_tracker.py set-status --task-id <task_id> --status DONE --plan-id <plan_id>
+```
+
+Behavior:
+
+- Phase 4 is mandatory after regression gate and before trunk merge.
+- Required evidence:
+  - `plans/workplans/progress.<plan_id>.md` updated with final execution/testing notes.
+  - `plans/workplans/findings.<plan_id>.md` updated with final decisions/risks (if any).
+  - `plans/todo_current.md` updated to `DONE` with matching `plan_id` and timestamp.
+- If any required planning file update is missing, Phase 5 is forbidden.
+
+## Phase 5: Merge task branch back to `dev`
 
 Goal: merge validated task branch into mature trunk.
 
@@ -192,9 +229,38 @@ git worktree prune
 
 Behavior:
 
-- If regression gate is not green, Phase 4 is forbidden.
+- If regression gate is not green, Phase 5 is forbidden.
+- If planning updates from Phase 4 are incomplete, Phase 5 is forbidden.
 - If merge conflict occurs, stop and provide conflict summary.
 - Cleanup is optional and only allowed if task worktree is clean.
+
+## Conflict triage protocol (mandatory)
+
+When `git merge` reports conflicts, do not auto-resolve by fixed branch priority.
+
+Required first step:
+
+```bash
+git status --short
+git diff --name-only --diff-filter=U
+git diff --merge
+```
+
+Decision rules (apply file by file):
+
+- Task-scoped progress files (for current task plan/progress/findings, or task-specific feature code touched mainly in this branch): prefer feature branch side.
+- Shared baseline/integration files (global CI, shared config, dependency lock updates not tied to current task): prefer trunk side.
+- Contracts/schemas/public API files: do not auto-pick; require explicit manual review and rationale.
+
+Forbidden behavior:
+
+- Do not use blanket merge strategies like `-X ours` or `-X theirs`.
+- Do not apply one-shot branch-wide preference without conflict analysis.
+
+Output requirement:
+
+- List conflicted files and per-file decision (`feature` / `trunk` / `manual`).
+- Provide one-line rationale per file before resolving.
 
 ## Safety rules
 

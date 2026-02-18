@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -145,11 +146,60 @@ def parse_task_ids(value: str | None) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
-def build_plan_id(existing: set[str]) -> str:
-    """Generate unique timestamp-based plan id."""
-    base = dt.datetime.now().strftime("%Y%m%d-%H%M")
+def validate_plan_id(plan_id: str) -> None:
+    """Validate project plan_id format: YYYYMMDD-<task_id>[-NN]."""
+    value = plan_id.strip()
+    if not value:
+        raise ValueError("Invalid plan_id format: empty value.")
+
+    parts = value.split("-")
+    if len(parts) < 3:
+        raise ValueError(
+            "Invalid plan_id format. Expected YYYYMMDD-<task_id>[-NN], e.g. 20260218-TC-008."
+        )
+
+    date_part = parts[0]
+    if not re.fullmatch(r"\d{8}", date_part):
+        raise ValueError(
+            "Invalid plan_id format. Expected YYYYMMDD-<task_id>[-NN], e.g. 20260218-TC-008."
+        )
+    try:
+        dt.datetime.strptime(date_part, "%Y%m%d")
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid plan_id format: date '{date_part}' is not a valid calendar date."
+        ) from exc
+
+    suffix = ""
+    task_segments = parts[1:]
+    if len(task_segments) >= 3 and re.fullmatch(r"\d{2}", task_segments[-1]):
+        suffix = task_segments[-1]
+        task_segments = task_segments[:-1]
+
+    task_id_part = "-".join(task_segments)
+    if not re.fullmatch(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+", task_id_part):
+        raise ValueError(
+            "Invalid plan_id format. Expected YYYYMMDD-<task_id>[-NN], e.g. 20260218-TC-008."
+        )
+
+    if suffix and suffix == "00":
+        raise ValueError("Invalid plan_id format: optional suffix must be 01-99.")
+
+
+def build_plan_id(existing: set[str], task_id: str, today: dt.date | None = None) -> str:
+    """Generate a unique plan_id in YYYYMMDD-task_id[-NN] format."""
+    normalized_task_id = task_id.strip()
+    if not normalized_task_id:
+        raise ValueError("Cannot build plan_id: task_id is empty.")
+    if not re.fullmatch(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+", normalized_task_id):
+        raise ValueError(
+            f"Cannot build plan_id: task_id '{task_id}' must contain alphanumeric segments joined by hyphens."
+        )
+
+    day = today or dt.date.today()
+    base = f"{day.strftime('%Y%m%d')}-{normalized_task_id}"
     candidate = base
-    suffix = 1
+    suffix = 0
     while candidate in existing:
         suffix += 1
         candidate = f"{base}-{suffix:02d}"
@@ -329,7 +379,11 @@ def cmd_quick_plan(args: argparse.Namespace) -> int:
             )
 
     existing_plan_ids = {task.plan_id for task in tasks if task.plan_id}
-    plan_id = args.plan_id or build_plan_id(existing_plan_ids)
+    if args.plan_id:
+        validate_plan_id(args.plan_id)
+        plan_id = args.plan_id
+    else:
+        plan_id = build_plan_id(existing_plan_ids, task_id=selected[0].task_id)
 
     create_plan_files(plan_id=plan_id, tasks=selected, rationale=rationale)
 
@@ -395,6 +449,8 @@ def cmd_set_status(args: argparse.Namespace) -> int:
         plan_id = args.plan_id or task.plan_id
         if not plan_id:
             raise ValueError(f"Task {task.task_id}: status {new_status} requires a plan_id.")
+        if args.plan_id:
+            validate_plan_id(plan_id)
         task.plan_id = plan_id
     elif new_status == "UNPLANNED":
         task.plan_id = ""
@@ -413,6 +469,7 @@ def cmd_bind_task(args: argparse.Namespace) -> int:
     """Bind a task to an active plan and mark it PLANNED."""
     preamble, tasks = parse_todo_file(TODO_PATH)
     task = find_task(tasks, args.task_id)
+    validate_plan_id(args.plan_id)
 
     if task.status == "DONE":
         raise ValueError(f"Task {task.task_id} is DONE and cannot be rebound.")
@@ -458,7 +515,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser = subparsers.add_parser("quick-plan", help="Create one plan and bind task(s)")
     plan_parser.add_argument("--task-ids", help="Comma-separated task ids. Omit for auto-select.")
     plan_parser.add_argument("--max-tasks", type=int, default=1, help="Auto-select count when task ids omitted.")
-    plan_parser.add_argument("--plan-id", help="Optional explicit plan id.")
+    plan_parser.add_argument("--plan-id", help="Optional explicit plan id (YYYYMMDD-<task_id>[-NN]).")
     plan_parser.add_argument("--note", help="Optional note written to selected tasks.")
     plan_parser.set_defaults(func=cmd_quick_plan)
 
@@ -470,13 +527,13 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("set-status", help="Set one task status")
     status_parser.add_argument("--task-id", required=True)
     status_parser.add_argument("--status", required=True, help="UNPLANNED|PLANNED|DONE")
-    status_parser.add_argument("--plan-id", help="Required for PLANNED or DONE if task has no plan_id")
+    status_parser.add_argument("--plan-id", help="Required for PLANNED or DONE if task has no plan_id; format YYYYMMDD-<task_id>[-NN]")
     status_parser.add_argument("--note", help="Optional note overwrite")
     status_parser.set_defaults(func=cmd_set_status)
 
     bind_parser = subparsers.add_parser("bind-task", help="Bind one task to an active plan")
     bind_parser.add_argument("--task-id", required=True)
-    bind_parser.add_argument("--plan-id", required=True)
+    bind_parser.add_argument("--plan-id", required=True, help="Plan id in YYYYMMDD-<task_id>[-NN] format")
     bind_parser.add_argument("--note", help="Optional note overwrite")
     bind_parser.set_defaults(func=cmd_bind_task)
 
