@@ -479,6 +479,7 @@ function buildDraftRowsFromFiles(files, runDate, previous) {
         netto: current?.netto ?? "-",
         tax_id: current?.tax_id ?? "-",
         receiver_ok: current?.receiver_ok ?? "-",
+        receiver_address_ok: current?.receiver_address_ok ?? "-",
         score: current?.score ?? {},
         raw_result: current?.raw_result ?? {},
         preview_path: current?.preview_path ?? "",
@@ -556,6 +557,7 @@ function buildDraftRowsFromBackend(rows, runDate, previous) {
         netto: current?.netto ?? normalizeCellValue(result.netto),
         tax_id: current?.tax_id ?? normalizeCellValue(result.tax_id),
         receiver_ok: current?.receiver_ok ?? normalizeReceiverOkValue(result.receiver_ok),
+        receiver_address_ok: current?.receiver_address_ok ?? normalizeReceiverOkValue(result.receiver_address_ok),
       });
     }
   });
@@ -589,6 +591,7 @@ function composeReviewRows(draft) {
         baseResult.netto = row.netto;
         baseResult.tax_id = row.tax_id;
         baseResult.receiver_ok = parseReceiverOkValue(row.receiver_ok);
+        baseResult.receiver_address_ok = parseReceiverOkValue(row.receiver_address_ok);
       }
 
       const payload = {

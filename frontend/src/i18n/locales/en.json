@@ -109,5 +109,7 @@
   "review.columns.type": "Type",
   "review.columns.sender": "Sender",
   "review.columns.tax_id": "Tax ID",
-  "review.columns.receiver_ok": "Receiver OK"
+  "review.columns.receiver_ok": "Receiver OK",
+  "review.columns.receiver_address_ok": "Address OK"
 }
+

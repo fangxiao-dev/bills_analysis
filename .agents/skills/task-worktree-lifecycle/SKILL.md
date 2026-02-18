@@ -17,9 +17,9 @@ allowed-tools:
 Operational skill for the full task branch lifecycle in this repo:
 1) create task worktree + sync shared config,
 2) initialize backend and frontend environments,
-3) sync latest mature trunk (`main`) + run regression gate,
+3) sync latest mature trunk (`dev`) + run regression gate,
 4) update planning artifacts (`plans/workplans/*` + `plans/todo_current.md`),
-5) merge task branch back into `main`.
+5) merge task branch back into `dev`.
 
 This skill is execution-oriented. For read-only cross-branch inspection, use `cross-worktree-sync`.
 
@@ -36,7 +36,7 @@ Parse from user request. If not provided, apply defaults.
 
 - `task_id` (required), example: `TC-200`
 - `slug` (required), example: `api-merge-ui`
-- `trunk` (optional, default: `main`)
+- `trunk` (optional, default: `dev`)
 - `worktree_path` (optional, default: `../wt-<task_id>`)
 - `apply_sync` (optional, default: `true`)
 
@@ -73,7 +73,7 @@ git status --short
 Validation rules:
 
 - Missing `task_id` or `slug` -> stop immediately with actionable message.
-- Missing `trunk` branch (`main` by default) -> stop immediately.
+- Missing `trunk` branch (`dev` by default) -> stop immediately.
 - If current tree has uncommitted changes, warn user before branch/worktree mutation.
 
 ## Phase 1: Setup task worktree + sync config
@@ -143,7 +143,7 @@ Behavior:
 - If any install/check command fails, stop and report exact failing command.
 - Do not proceed to Phase 3 until all required Phase 2 commands pass.
 
-## Phase 3: Sync mature trunk (`main`) + regression gate
+## Phase 3: Sync mature trunk (`dev`) + regression gate
 
 Goal: integrate latest trunk changes into the task branch and verify regression.
 
@@ -201,7 +201,7 @@ Behavior:
   - `plans/todo_current.md` updated to `DONE` with matching `plan_id` and timestamp.
 - If any required planning file update is missing, Phase 5 is forbidden.
 
-## Phase 5: Merge task branch back to `main`
+## Phase 5: Merge task branch back to `dev`
 
 Goal: merge validated task branch into mature trunk.
 
@@ -292,7 +292,7 @@ Output requirement:
 - Expect trunk merge attempted first, then required regression commands run in order.
 
 4. Merge flow:
-- Expect `main` receives `--no-ff` merge only when regression is green.
+- Expect `dev` receives `--no-ff` merge only when regression is green.
 
 5. Failure handling:
 - Missing params / missing trunk / regression failure / merge conflicts

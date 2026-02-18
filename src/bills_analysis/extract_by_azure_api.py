@@ -255,6 +255,12 @@ def analyze_document_with_azure(
             extracted_data["invoice_id"] = f_inv_id.value_string.replace(" ", "") if f_inv_id else None
             extracted_data["confidence_invoice_id"] = f_inv_id.confidence if f_inv_id else None
 
+        # 6. Customer Address (仅限 Invoice 模型，用于 office receiver address 校验)
+        if model_id == "prebuilt-invoice":
+            f_cust_addr = fields.get("CustomerAddress") or fields.get("BillingAddress")
+            extracted_data["customer_address"] = getattr(f_cust_addr, "content", None) if f_cust_addr else None
+            extracted_data["confidence_customer_address"] = f_cust_addr.confidence if f_cust_addr else None
+
     print(f"[Azure] extracted_data for this page:\n{extracted_data}")
     if return_fields:
         return extracted_data, fields_dict
@@ -325,9 +331,12 @@ def extract_office_invoice_azure(distilled_data: dict):
 
         ### Information to Extract
         1. **purpose**: Classify the invoice into exactly ONE of the following allowed purpose.
-        2. **sender**: The name of the company issuing the invoice. 
+        2. **sender**: The name of the company issuing the invoice.
         - *Rule*: Remove legal suffixes like "GmbH", "AG", "e.K.", "Ltd",etc. (e.g., "Ramen lppin Europa GmbH" -> "Ramen lppin Europa").
         3. **receiver**: The name of the company receiving the invoice (for verification).
+        - *Rule*: Keep the full legal company name for receiver, including suffixes like "GmbH"/"AG" if present in invoice text.
+        4. **receiver_address**: The street address of the company receiving the invoice (street + house number + postal code + city).
+        - *Rule*: Output in one line as `<Street> <HouseNo> <PLZ> <City>`.
 
         ### OCR Correction Logic (General Rules)
         Before processing, apply these logic rules to fix common OCR/DI artifacts:
@@ -337,7 +346,11 @@ def extract_office_invoice_azure(distilled_data: dict):
             - Fix "0" (zero) vs. "O" (letter O) in company names.
             - Fix "ß" being recognized as "ll", "B", or "ss".
         - **Scope**: The standard name can be a subset of a complete name, e.g. the rules to normalize "Ramen Ippin" also apply to "Ramen Ippin Dortmund", "Ramen Ippin Europa".
+        - **Address Normalization**: "Reinoldistraße" / "Reinoldistrasse" / "Reinoldistr." / "Reinoldistr" should all be normalized to "Reinoldistr.". Ensure street number is attached.
+        - **Address Output Canonical Form**: If receiver street is Reinoldistrasse/Reinoldistraße variants, output as `Reinoldistr. <HouseNo> <PLZ> Dortmund`.
         - **Contextual Healing**: If a word is very close to a known business term or a name in the list below, e.g., just one or two letters off or missing a space, normalize it to the standard version.
+        - **Conservative Receiver Correction**: For `receiver`, only correct high-confidence OCR confusions (`I/l/1`, `O/0`) and obvious spacing issues. Do not invent or over-normalize uncertain words.
+        - **Receiver Evidence Rule**: If receiver name is uncertain, keep the closest raw text from invoice rather than forcing a guessed canonical entity.
 
         ### Standard Entity List As Examples
         Check extracted names against this list. If a match or near-match is found, use the **Standard Name**:
@@ -375,7 +388,8 @@ def extract_office_invoice_azure(distilled_data: dict):
         {
         "purpose": "<ONE_OF_ALLOWED_PURPOSES>",
         "sender": "<EXTRACTED_SENDER_NAME>",
-        "receiver": "<EXTRACTED_RECEIVER_NAME>"
+        "receiver": "<EXTRACTED_RECEIVER_NAME>",
+        "receiver_address": "<EXTRACTED_RECEIVER_ADDRESS>"
         }
     """
 

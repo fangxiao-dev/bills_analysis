@@ -10,8 +10,9 @@
 
 ## plan_id 规则
 
-- 默认格式：`YYYYMMDD-HHmm`
-- 同分钟重复创建时，脚本追加后缀 `-02`、`-03`...
+- 默认格式：`YYYYMMDD-<task_id>`
+- 同一 `task_id` 在同一天重复创建时，脚本追加后缀 `-01`、`-02`...
+- 示例：`20260218-TC-008`、`20260218-TC-008-01`
 
 ## task 状态机
 
@@ -31,5 +32,5 @@
 python scripts/plan_tracker.py list
 python scripts/plan_tracker.py quick-plan --max-tasks 2
 python scripts/plan_tracker.py quick-resume
-python scripts/plan_tracker.py set-status --task-id TC-001 --status DONE
+python scripts/plan_tracker.py set-status --task-id TC-001 --status DONE --plan-id 20260218-TC-001
 ```
