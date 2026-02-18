@@ -1,4 +1,4 @@
-﻿---
+---
 name: task-worktree-lifecycle
 version: "1.0.0"
 description: End-to-end task worktree lifecycle for WT-PM (create/sync/init/regression/merge).
@@ -17,8 +17,8 @@ allowed-tools:
 Operational skill for the full task branch lifecycle in this repo:
 1) create task worktree + sync shared config,
 2) initialize backend and frontend environments,
-3) sync latest mature trunk (`dev`) + run regression gate,
-4) merge task branch back into `dev`.
+3) sync latest mature trunk (`main`) + run regression gate,
+4) merge task branch back into `main`.
 
 This skill is execution-oriented. For read-only cross-branch inspection, use `cross-worktree-sync`.
 
@@ -35,7 +35,7 @@ Parse from user request. If not provided, apply defaults.
 
 - `task_id` (required), example: `TC-200`
 - `slug` (required), example: `api-merge-ui`
-- `trunk` (optional, default: `dev`)
+- `trunk` (optional, default: `main`)
 - `worktree_path` (optional, default: `../wt-<task_id>`)
 - `apply_sync` (optional, default: `true`)
 
@@ -64,14 +64,14 @@ Run in current repo root:
 
 ```bash
 git rev-parse --show-toplevel
-git rev-parse --verify dev
+git rev-parse --verify <trunk>
 git status --short
 ```
 
 Validation rules:
 
 - Missing `task_id` or `slug` -> stop immediately with actionable message.
-- Missing `trunk` branch (`dev` by default) -> stop immediately.
+- Missing `trunk` branch (`main` by default) -> stop immediately.
 - If current tree has uncommitted changes, warn user before branch/worktree mutation.
 
 ## Phase 1: Setup task worktree + sync config
@@ -86,23 +86,35 @@ bash scripts/sync_worktree_config.sh
 bash scripts/sync_worktree_config.sh --apply
 ```
 
+Windows fallback (when `bash` is unavailable or blocked):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/sync_worktree_config.ps1
+powershell -ExecutionPolicy Bypass -File scripts/sync_worktree_config.ps1 -Apply
+```
+
 Notes:
 
 - Dry-run (`bash scripts/sync_worktree_config.sh`) is mandatory and must run before apply.
-- On Windows, if `bash` is unavailable or blocked, run an equivalent PowerShell sync for the same items:
-  - `.agents/`
-  - `.claude/rules/`
-  - `.claude/skills/`
-  - `.env`
-  - `frontend/.env.local`
+- Sync gate is mandatory: if `apply_sync=true`, Phase 1 is successful only after both dry-run and apply succeed.
+- `bash` availability must be checked before sync commands:
+  - if available: run `.sh` dry-run + apply.
+  - if unavailable/blocked: must switch to `scripts/sync_worktree_config.ps1` dry-run + apply.
+- If both `.sh` and `.ps1` sync paths fail, stop immediately and do not continue to Phase 2.
 - If `apply_sync=false`, skip the apply command and report explicitly.
 - If branch/worktree creation fails due permission/sandbox lock, rerun with elevated permission.
 - Do not change branch naming convention as a workaround. Keep `feat/<task_id>-<slug>`.
+- Phase 2 is forbidden until sync gate and post-check pass.
+- Post-check is mandatory (must be included in output evidence):
+  - verify `.agents/`, `.claude/rules/`, `.claude/skills/`, `.env`, `frontend/.env.local` in target worktree.
+  - for files, verify content hash equality; for directories, verify they exist and report file counts.
 - Output summary:
   - created branch
   - created worktree path
+  - sync method (`bash` or `powershell`)
   - sync dry-run result
   - sync apply result (or skipped)
+  - post-check result
 
 ## Phase 2: Initialize environments (backend + frontend)
 
@@ -129,7 +141,7 @@ Behavior:
 - If any install/check command fails, stop and report exact failing command.
 - Do not proceed to Phase 3 until all required Phase 2 commands pass.
 
-## Phase 3: Sync mature trunk (`dev`) + regression gate
+## Phase 3: Sync mature trunk (`main`) + regression gate
 
 Goal: integrate latest trunk changes into the task branch and verify regression.
 
@@ -164,7 +176,7 @@ Behavior:
 - If merge conflict occurs, stop and report conflict files.
 - If any required regression command fails, stop and do not enter Phase 4.
 
-## Phase 4: Merge task branch back to `dev`
+## Phase 4: Merge task branch back to `main`
 
 Goal: merge validated task branch into mature trunk.
 
@@ -196,6 +208,34 @@ Behavior:
 - If merge conflict occurs, stop and provide conflict summary.
 - Cleanup is optional and only allowed if task worktree is clean.
 
+## Conflict triage protocol (mandatory)
+
+When `git merge` reports conflicts, do not auto-resolve by fixed branch priority.
+
+Required first step:
+
+```bash
+git status --short
+git diff --name-only --diff-filter=U
+git diff --merge
+```
+
+Decision rules (apply file by file):
+
+- Task-scoped progress files (for current task plan/progress/findings, or task-specific feature code touched mainly in this branch): prefer feature branch side.
+- Shared baseline/integration files (global CI, shared config, dependency lock updates not tied to current task): prefer trunk side.
+- Contracts/schemas/public API files: do not auto-pick; require explicit manual review and rationale.
+
+Forbidden behavior:
+
+- Do not use blanket merge strategies like `-X ours` or `-X theirs`.
+- Do not apply one-shot branch-wide preference without conflict analysis.
+
+Output requirement:
+
+- List conflicted files and per-file decision (`feature` / `trunk` / `manual`).
+- Provide one-line rationale per file before resolving.
+
 ## Safety rules
 
 - Never use destructive commands such as:
@@ -226,7 +266,7 @@ Behavior:
 - Expect trunk merge attempted first, then required regression commands run in order.
 
 4. Merge flow:
-- Expect `dev` receives `--no-ff` merge only when regression is green.
+- Expect `main` receives `--no-ff` merge only when regression is green.
 
 5. Failure handling:
 - Missing params / missing trunk / regression failure / merge conflicts

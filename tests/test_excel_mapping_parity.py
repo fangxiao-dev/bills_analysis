@@ -68,7 +68,7 @@ def test_office_excel_mapping_parity() -> None:
                 "filename": "office.pdf",
                 "category": "office",
                 "result": {
-                    "run_date": "04/02/2026",
+                    "run_date": "04/02/2026 10:20:30",
                     "type": "Miete",
                     "sender": "Metro",
                     "brutto": "50.00",
@@ -90,6 +90,7 @@ def test_office_excel_mapping_parity() -> None:
     values = [cell.value for cell in ws[2]]
     row = {headers[idx]: values[idx] for idx in range(len(headers))}
 
+    assert row["Datum"].strftime("%d/%m/%Y") == "04/02/2026"
     assert row["Type"] == "Miete"
     assert row["Rechnung Name"] == "Metro"
     assert row["need review"] is True
