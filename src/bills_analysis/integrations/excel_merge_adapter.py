@@ -297,6 +297,9 @@ def merge_office_excel(
         target_row = _find_row_by_datum(datum_val)
         if target_row is None:
             ws.append(filtered_row)
+            new_row_idx = ws.max_row
+            if filtered_row:
+                write_datum_cell(ws.cell(row=new_row_idx, column=1), filtered_row[0])
             continue
 
         for col_idx, (value, link) in enumerate(zip(filtered_row, filtered_links), start=1):
