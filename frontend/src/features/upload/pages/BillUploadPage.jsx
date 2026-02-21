@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { AppFrame } from "../../../app/AppFrame";
@@ -44,6 +45,25 @@ export function BillUploadPage() {
     }
     return "";
   })();
+
+  // Fetch review rows when batch is ready so upload page can show skip_reason warnings.
+  useEffect(() => {
+    if (!state.batch?.batch_id || state.batch.status !== "review_ready") {
+      return;
+    }
+    void actions.fetchReviewRows();
+  }, [actions.fetchReviewRows, state.batch?.batch_id, state.batch?.status]);
+
+  // Build filename → skip_reason lookup from review rows for FileQueuePanel warnings.
+  const skipReasonByName = useMemo(() => {
+    const map = new Map();
+    for (const row of state.reviewRows || []) {
+      if (row.skip_reason && row.filename) {
+        map.set(row.filename, row.skip_reason);
+      }
+    }
+    return map;
+  }, [state.reviewRows]);
 
   const handleBatchTypeChange = (nextType) => {
     if (nextType === state.batchType) {
@@ -131,7 +151,12 @@ export function BillUploadPage() {
 
           <div className="mt-4">
             <h2 className="mb-2 text-lg font-semibold">{t("upload.itemsToConfirm")}</h2>
-            <FileQueuePanel files={state.files} onRemove={actions.removeFile} batchInputs={state.batch?.inputs} />
+            <FileQueuePanel
+              files={state.files}
+              onRemove={actions.removeFile}
+              batchInputs={state.batch?.inputs}
+              skipReasonByName={skipReasonByName}
+            />
           </div>
 
           {state.formError ? (

@@ -2,6 +2,8 @@ import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { isProblemField } from "../utils/reviewConfidence";
+import { buildUserFriendlySkipReason } from "../utils/skipReasonUtils";
+import { Button } from "../../../shared/ui/Button";
 
 /**
  * Editable review table for one category.
@@ -13,9 +15,10 @@ import { isProblemField } from "../utils/reviewConfidence";
  *  columns: Array<{ key: string; label: string; readOnly?: boolean; inputType?: "text" | "select"; options?: Array<string | { value: string; label?: string }> }>;
  *  onChangeCell: (rowId: string, key: string, value: string) => void;
  *  onViewRow?: (row: Record<string, string>) => void;
+ *  onRemoveRow?: (rowId: string) => void;
  * }} props
  */
-export function ReviewCategoryTable({ title, description, rows, columns, onChangeCell, onViewRow }) {
+export function ReviewCategoryTable({ title, description, rows, columns, onChangeCell, onViewRow, onRemoveRow }) {
   const { t } = useTranslation();
   const [skipPopover, setSkipPopover] = useState(null);
 
@@ -139,6 +142,16 @@ export function ReviewCategoryTable({ title, description, rows, columns, onChang
                   >
                     {t("review.table.view")}
                   </a>
+                  {onRemoveRow ? (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      className="px-2 py-1 text-xs"
+                      onClick={() => onRemoveRow(row.id)}
+                    >
+                      {t("common.remove")}
+                    </Button>
+                  ) : null}
                 </td>
               </tr>
             ))}
@@ -187,17 +200,3 @@ function isCompactField(key) {
   return key === "brutto" || key === "netto" || key === "receiver_ok";
 }
 
-/**
- * Build user-facing skip message from backend skip_reason payload.
- * @param {(key: string, options?: Record<string, unknown>) => string} t
- * @param {string} skipReason
- */
-function buildUserFriendlySkipReason(t, skipReason) {
-  const text = String(skipReason || "");
-  const match = text.match(/max_pages=(\d+)/);
-  const limit = match?.[1];
-  if (limit) {
-    return t("review.skipReasonExceeded", { limit });
-  }
-  return t("review.skipReasonFallback");
-}

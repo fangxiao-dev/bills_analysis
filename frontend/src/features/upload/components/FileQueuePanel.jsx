@@ -1,18 +1,62 @@
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "../../../shared/ui/Button";
 import { useTranslation } from "react-i18next";
+import { buildUserFriendlySkipReason } from "../utils/skipReasonUtils";
 
 /**
  * File queue rendered as high-density table for business workflows.
  * Shows per-file backend parsing status when batch inputs are available.
+ * Shows page-limit warning icon when skip_reason is available from review rows.
  * @param {{
- *  files: Array<{ id: string; name: string; size: number; category: "bar" | "zbon" | "office" | null }>;
+ *  files: Array<{ id: string; file?: File; name: string; size: number; category: "bar" | "zbon" | "office" | null }>;
  *  onRemove: (id: string) => void;
  *  batchInputs?: Array<{ path: string; category?: string | null; status?: string | null; error?: unknown }>;
+ *  skipReasonByName?: Map<string, string>;
  * }} props
  */
-export function FileQueuePanel({ files, onRemove, batchInputs }) {
+export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName }) {
   const { t } = useTranslation();
   const hasBatchInputs = Array.isArray(batchInputs) && batchInputs.length > 0;
+  const [skipPopover, setSkipPopover] = useState(null);
+
+  // Object URL cache for in-browser PDF preview; cleaned up on unmount.
+  const previewCacheRef = useRef(new Map());
+  useEffect(
+    () => () => {
+      for (const url of previewCacheRef.current.values()) {
+        URL.revokeObjectURL(url);
+      }
+      previewCacheRef.current.clear();
+    },
+    [],
+  );
+
+  // Close popover on outside click, scroll, or resize.
+  useEffect(() => {
+    if (!skipPopover) {
+      return undefined;
+    }
+    const onDocumentClick = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      if (target.closest(".review-skip-icon-btn") || target.closest(".review-skip-popover")) {
+        return;
+      }
+      setSkipPopover(null);
+    };
+    const onViewportChange = () => setSkipPopover(null);
+    document.addEventListener("click", onDocumentClick);
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("scroll", onViewportChange, true);
+    return () => {
+      document.removeEventListener("click", onDocumentClick);
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange, true);
+    };
+  }, [skipPopover]);
 
   if (!files.length) {
     return <p className="text-sm text-ledger-smoke">{t("upload.queueEmpty")}</p>;
@@ -33,6 +77,7 @@ export function FileQueuePanel({ files, onRemove, batchInputs }) {
         <tbody>
           {files.map((entry, index) => {
             const inputStatus = hasBatchInputs ? resolveInputStatus(entry, index, batchInputs) : "pending";
+            const skipReason = resolveSkipReason(entry, skipReasonByName);
             return (
               <tr key={entry.id} className="file-row">
                 <td className="font-medium text-ledger-ink">{entry.name}</td>
@@ -46,6 +91,50 @@ export function FileQueuePanel({ files, onRemove, batchInputs }) {
                   <ItemStatusBadge status={inputStatus} t={t} />
                 </td>
                 <td>
+                  {skipReason ? (
+                    <button
+                      type="button"
+                      className="review-skip-icon-btn"
+                      aria-label={t("review.skipReasonAria")}
+                      onClick={(event) => {
+                        const triggerRect = event.currentTarget.getBoundingClientRect();
+                        const floatingWidth = 280;
+                        const estimatedHeight = 74;
+                        const viewportPadding = 8;
+                        const placeAbove = triggerRect.top >= estimatedHeight + 12;
+                        const top = placeAbove ? triggerRect.top - estimatedHeight - 8 : triggerRect.bottom + 8;
+                        const left = Math.min(
+                          Math.max(viewportPadding, triggerRect.left - 8),
+                          window.innerWidth - floatingWidth - viewportPadding,
+                        );
+                        setSkipPopover((prev) =>
+                          prev?.entryId === entry.id
+                            ? null
+                            : { entryId: entry.id, top, left, message: buildUserFriendlySkipReason(t, skipReason) },
+                        );
+                      }}
+                    >
+                      ⚠
+                    </button>
+                  ) : null}
+                  {entry.file ? (
+                    <a
+                      href="#"
+                      className="review-view-link"
+                      title={t("review.openInNewTab")}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        let url = previewCacheRef.current.get(entry.id);
+                        if (!url) {
+                          url = URL.createObjectURL(entry.file);
+                          previewCacheRef.current.set(entry.id, url);
+                        }
+                        window.open(url, "_blank", "noopener,noreferrer");
+                      }}
+                    >
+                      {t("review.table.view")}
+                    </a>
+                  ) : null}
                   <Button type="button" variant="danger" className="px-2 py-1 text-xs" onClick={() => onRemove(entry.id)}>
                     {t("common.remove")}
                   </Button>
@@ -55,6 +144,17 @@ export function FileQueuePanel({ files, onRemove, batchInputs }) {
           })}
         </tbody>
       </table>
+      {skipPopover
+        ? createPortal(
+            <div
+              className="review-skip-popover"
+              style={{ top: `${skipPopover.top}px`, left: `${skipPopover.left}px` }}
+            >
+              {skipPopover.message}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -101,6 +201,15 @@ function resolveInputStatus(entry, index, batchInputs) {
     return tail === entry.name;
   });
   return byName?.status || null;
+}
+
+/**
+ * Look up skip_reason for a file entry from the reviewRows-derived name map.
+ * @param {{ name: string }} entry
+ * @param {Map<string, string> | undefined} skipReasonByName
+ */
+function resolveSkipReason(entry, skipReasonByName) {
+  return skipReasonByName?.get(entry.name) ?? null;
 }
 
 /**

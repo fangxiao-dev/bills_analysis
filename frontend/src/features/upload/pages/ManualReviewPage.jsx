@@ -24,6 +24,7 @@ const OFFICE_TYPE_OPTIONS = [
   "Personalkosten",
   "Gerät&Geschirr",
   "Reparatur",
+  "Reinigung",
   "Getränke",
   "Bank&SumUp&Linzen",
   "Service&Andere",
@@ -133,6 +134,14 @@ export function ManualReviewPage() {
     setDraft((previous) => ({
       ...previous,
       [section]: previous[section].map((row) => (row.id === rowId ? { ...row, [key]: value } : row)),
+    }));
+  }, []);
+
+  // Remove a row from draft; excluded from merge payload (JSON on disk unchanged).
+  const onRemoveRow = useCallback((section, rowId) => {
+    setDraft((previous) => ({
+      ...previous,
+      [section]: previous[section].filter((row) => row.id !== rowId),
     }));
   }, []);
 
@@ -339,6 +348,7 @@ export function ManualReviewPage() {
           columns={barColumns}
           onChangeCell={(rowId, key, value) => onChangeCell("bar", rowId, key, value)}
           onViewRow={onViewRow}
+          onRemoveRow={(rowId) => onRemoveRow("bar", rowId)}
         />
 
         <ReviewCategoryTable
@@ -348,6 +358,7 @@ export function ManualReviewPage() {
           columns={zbonColumns}
           onChangeCell={(rowId, key, value) => onChangeCell("zbon", rowId, key, value)}
           onViewRow={onViewRow}
+          onRemoveRow={(rowId) => onRemoveRow("zbon", rowId)}
         />
 
         <ReviewCategoryTable
@@ -357,6 +368,7 @@ export function ManualReviewPage() {
           columns={officeColumns}
           onChangeCell={(rowId, key, value) => onChangeCell("office", rowId, key, value)}
           onViewRow={onViewRow}
+          onRemoveRow={(rowId) => onRemoveRow("office", rowId)}
         />
 
         <section className="ledger-card p-4">
