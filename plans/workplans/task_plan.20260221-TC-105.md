@@ -12,7 +12,7 @@ Optimize Web API main pipeline async flow for lower latency:
 - Add configurable concurrency/rate limits via env vars.
 
 ## Current Phase
-Phase 2
+Phase 5
 
 ## Phases
 ### Phase 1: Requirements & Discovery
@@ -25,23 +25,23 @@ Phase 2
 - [x] Persist plan artifacts and bind `TC-105`
 - [x] Create task worktree and sync local configs
 - [x] Initialize backend/frontend environments
-- **Status:** in_progress
+- **Status:** complete
 
 ### Phase 3: Backend Async Refactor
-- [ ] Refactor per-file pipeline into staged orchestration
-- [ ] Add early page-count gate before extraction scheduling
-- [ ] Add bounded concurrency/rate limits for extraction
-- [ ] Keep organized rename behavior on join stage
-- **Status:** pending
+- [x] Refactor per-file pipeline into staged orchestration
+- [x] Add early page-count gate before extraction scheduling
+- [x] Add bounded concurrency/rate limits for extraction
+- [x] Keep organized rename behavior on join stage
+- **Status:** complete
 
 ### Phase 4: Tests & Verification
-- [ ] Update/add tests for over-max-pages early skip behavior
-- [ ] Add tests for parallel branch execution and bounded concurrency
-- [ ] Run targeted backend and contract tests
-- **Status:** pending
+- [x] Update/add tests for over-max-pages early skip behavior
+- [x] Add tests for parallel branch execution and bounded concurrency
+- [x] Run targeted backend and contract tests
+- **Status:** complete
 
 ### Phase 5: Delivery
-- [ ] Update findings/progress with final evidence
-- [ ] Set `TC-105` to DONE in `plans/todo_current.md`
-- [ ] Prepare merge-ready summary
-- **Status:** pending
+- [x] Update findings/progress with final evidence
+- [x] Set `TC-105` to DONE in `plans/todo_current.md`
+- [x] Prepare merge-ready summary
+- **Status:** complete

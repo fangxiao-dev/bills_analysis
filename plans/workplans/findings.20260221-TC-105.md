@@ -24,6 +24,26 @@
 | Add configurable extraction limits | Prevent DI throttling while enabling controlled speedup. |
 | Keep API schema unchanged | M1 `v1` contract freeze requirement. |
 
+## Implementation Findings
+- Refactored `LocalPipelineBackend` single-file path into async stages:
+  - Precheck page-count first (`_safe_pdf_page_count`) to decide whether extraction branch should be scheduled.
+  - Compression branch always runs for existing files to preserve archive traceability.
+  - Extraction branch runs only when not over `max_pages`.
+  - Join stage keeps organized rename/copy behavior unchanged.
+- Added extraction controls via env vars:
+  - `BACKEND_EXTRACT_CONCURRENCY` (int, default `4`, min `1`)
+  - `BACKEND_EXTRACT_MIN_INTERVAL_SEC` (float, default `0.0`, min `0.0`)
+- Introduced `_AsyncRateLimiter` to provide shared minimum spacing between extraction starts.
+- Preserved callback/status contract and output payload schema (`review_rows`, `skip_reason`, `processing_summary`, artifacts).
+
+## Verification Evidence
+- RED (before refactor):
+  - `uv run pytest tests/test_api_schema_v1.py -q -k "limits_extract_concurrency_via_env or runs_extract_and_compress_in_parallel"`
+  - Result: `2 failed` (expected), showing missing concurrency cap and missing branch overlap.
+- GREEN (after refactor):
+  - Same targeted command result: `2 passed`.
+  - Full contract file: `uv run pytest tests/test_api_schema_v1.py -q` -> `39 passed`.
+
 ## Issues Encountered
 | Issue | Resolution |
 |---|---|

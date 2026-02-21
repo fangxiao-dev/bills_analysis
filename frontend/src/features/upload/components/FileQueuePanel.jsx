@@ -18,7 +18,7 @@ import { buildUserFriendlySkipReason } from "../utils/skipReasonUtils";
 export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName }) {
   const { t } = useTranslation();
   const hasBatchInputs = Array.isArray(batchInputs) && batchInputs.length > 0;
-  const [skipPopover, setSkipPopover] = useState(null);
+  const [statusPopover, setStatusPopover] = useState(null);
 
   // Object URL cache for in-browser PDF preview; cleaned up on unmount.
   const previewCacheRef = useRef(new Map());
@@ -34,7 +34,7 @@ export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName 
 
   // Close popover on outside click, scroll, or resize.
   useEffect(() => {
-    if (!skipPopover) {
+    if (!statusPopover) {
       return undefined;
     }
     const onDocumentClick = (event) => {
@@ -45,9 +45,9 @@ export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName 
       if (target.closest(".review-skip-icon-btn") || target.closest(".review-skip-popover")) {
         return;
       }
-      setSkipPopover(null);
+      setStatusPopover(null);
     };
-    const onViewportChange = () => setSkipPopover(null);
+    const onViewportChange = () => setStatusPopover(null);
     document.addEventListener("click", onDocumentClick);
     window.addEventListener("resize", onViewportChange);
     window.addEventListener("scroll", onViewportChange, true);
@@ -56,7 +56,7 @@ export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName 
       window.removeEventListener("resize", onViewportChange);
       window.removeEventListener("scroll", onViewportChange, true);
     };
-  }, [skipPopover]);
+  }, [statusPopover]);
 
   if (!files.length) {
     return <p className="text-sm text-ledger-smoke">{t("upload.queueEmpty")}</p>;
@@ -77,10 +77,20 @@ export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName 
         <tbody>
           {files.map((entry, index) => {
             const inputStatus = hasBatchInputs ? resolveInputStatus(entry, index, batchInputs) : "pending";
+            const inputError = hasBatchInputs ? resolveInputError(entry, index, batchInputs) : null;
             const skipReason = resolveSkipReason(entry, skipReasonByName);
             // Override status to "skipped" when skip_reason is known, so the badge
             // reflects the page-limit skip rather than showing a misleading "extracted".
             const displayStatus = skipReason ? "skipped" : inputStatus;
+            const failedReason =
+              !skipReason && displayStatus === "failed" && typeof inputError === "string" && inputError.trim()
+                ? inputError.trim()
+                : null;
+            const skippedStatusFallback = !skipReason && displayStatus === "skipped" ? t("upload.queue.skipReasonFallback") : null;
+            const warningMessage = skipReason
+              ? buildUserFriendlySkipReason(t, skipReason, "upload")
+              : skippedStatusFallback || failedReason;
+            const isSkipWarning = Boolean(skipReason) || displayStatus === "skipped";
             return (
               <tr key={entry.id} className="file-row">
                 <td className="font-medium text-ledger-ink">{entry.name}</td>
@@ -95,11 +105,11 @@ export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName 
                 </td>
                 <td>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {skipReason ? (
+                    {warningMessage ? (
                       <button
                         type="button"
                         className="review-skip-icon-btn"
-                        aria-label={t("review.skipReasonAria")}
+                        aria-label={isSkipWarning ? t("review.skipReasonAria") : t("upload.queue.failedReasonAria")}
                         onClick={(event) => {
                           const triggerRect = event.currentTarget.getBoundingClientRect();
                           const floatingWidth = 280;
@@ -111,10 +121,10 @@ export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName 
                             Math.max(viewportPadding, triggerRect.left - 8),
                             window.innerWidth - floatingWidth - viewportPadding,
                           );
-                          setSkipPopover((prev) =>
+                          setStatusPopover((prev) =>
                             prev?.entryId === entry.id
                               ? null
-                              : { entryId: entry.id, top, left, message: buildUserFriendlySkipReason(t, skipReason, "upload") },
+                              : { entryId: entry.id, top, left, message: warningMessage || t("upload.queue.failedReasonFallback") },
                           );
                         }}
                       >
@@ -149,13 +159,13 @@ export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName 
           })}
         </tbody>
       </table>
-      {skipPopover
+      {statusPopover
         ? createPortal(
             <div
               className="review-skip-popover"
-              style={{ top: `${skipPopover.top}px`, left: `${skipPopover.left}px` }}
+              style={{ top: `${statusPopover.top}px`, left: `${statusPopover.left}px` }}
             >
-              {skipPopover.message}
+              {statusPopover.message}
             </div>,
             document.body,
           )
@@ -207,6 +217,23 @@ function resolveInputStatus(entry, index, batchInputs) {
     return tail === entry.name;
   });
   return byName?.status || null;
+}
+
+/**
+ * Match a local file entry to backend input error by index or filename.
+ * @param {{ name: string }} entry
+ * @param {number} index
+ * @param {Array<{ path: string; error?: unknown }>} batchInputs
+ */
+function resolveInputError(entry, index, batchInputs) {
+  if (batchInputs[index]) {
+    return batchInputs[index].error || null;
+  }
+  const byName = batchInputs.find((input) => {
+    const tail = String(input.path || "").split("/").pop() || "";
+    return tail === entry.name;
+  });
+  return byName?.error || null;
 }
 
 /**
