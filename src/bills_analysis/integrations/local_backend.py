@@ -451,6 +451,8 @@ class LocalPipelineBackend:
     def _row_status(self, row: dict[str, Any]) -> str:
         """Map one backend row payload into the persisted input status contract."""
 
+        if row.get("skip_reason"):
+            return "skipped"
         return "failed" if self._row_has_external_failure(row) else "extracted"
 
     def _row_error(self, row: dict[str, Any]) -> str | None:

@@ -43,7 +43,7 @@ def _set_one_input_status(batch: BatchRecord, *, event: dict[str, Any]) -> None:
     """Update one input status/error by row_id first, then filename fallback."""
 
     status = str(event.get("status") or "").strip()
-    if status not in {"processing", "extracted", "failed"}:
+    if status not in {"processing", "extracted", "failed", "skipped"}:
         return
     error_value = event.get("error")
     error = str(error_value).strip() if isinstance(error_value, str) else None

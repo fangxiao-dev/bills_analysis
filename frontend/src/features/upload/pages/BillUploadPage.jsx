@@ -65,11 +65,13 @@ export function BillUploadPage() {
   ]);
 
   // Build filename → skip_reason lookup from review rows for FileQueuePanel warnings.
+  // Backend stores files as "01_original.pdf" (index-prefixed); strip prefix to match entry.name.
   const skipReasonByName = useMemo(() => {
     const map = new Map();
     for (const row of state.reviewRows || []) {
       if (row.skip_reason && row.filename) {
-        map.set(row.filename, row.skip_reason);
+        const uiName = row.filename.replace(/^\d+_/, "");
+        map.set(uiName, row.skip_reason);
       }
     }
     return map;
