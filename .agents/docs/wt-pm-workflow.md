@@ -86,6 +86,8 @@ git worktree add -b feat/TC-007-batch-delete ../wt-TC-007 main
 - worktree 默认放在与主工作目录同级的可见目录（如 `../wt-TC-007`）
 - 如果仓库元数据或目标路径不在当前沙箱可写范围，需先申请提权再执行 `git worktree add/remove`。
 - `scripts/sync_worktree_config.sh` 若在 Windows 无法用 `bash` 执行，需使用等价 PowerShell 同步流程。
+- `sync_worktree_config` 的同步方向是“当前目录 -> 其他 worktree”；因此要把 `dev/main` 的 `.env` 等配置同步到任务 worktree 时，**必须在 trunk 目录执行**脚本。
+- 若任务是“续做已有 worktree”（非新建），也必须先在 trunk 执行 `sync_worktree_config`（dry-run + apply），再进入该 task worktree 开发。
 
 ### Plan
 
@@ -157,7 +159,7 @@ API schema 作为前后端（或模块间）的集成边界。Contract 一旦冻
 |------|------|--------|------|
 | 1. Task Creation & Planning | Trunk | PM/Executor | 在 `plans/todo_current.md` 创建 `UNPLANNED` 条目；运行 `quick-plan` 生成三文件；状态升为 `PLANNED` |
 | 2. Commit Plan to Trunk | Trunk | Executor | `git commit` 规划产出物（`todo_current.md` + 三 plan 文件）到 trunk，形成独立审计节点 |
-| 3. Worktree Setup | Trunk → Worktree | Executor | `git worktree add -b feat/<id>-<slug> <path> dev`；同步共享配置（`sync_worktree_config`） |
+| 3. Worktree Setup | Trunk → Worktree | Executor | 新建时：`git worktree add -b feat/<id>-<slug> <path> dev`；续做时：跳过 add；两种情况都必须在 trunk 侧执行共享配置同步（`sync_worktree_config`） |
 | 4. Environment Init | Worktree | Executor | `uv sync` + `pnpm install`；最小可运行检查 |
 | 5. Implementation | Worktree | Executor | 编码、单元测试、迭代 |
 | 6. Sync Trunk | Worktree | Executor | `git merge dev`，解决冲突 |

@@ -56,6 +56,7 @@ Path policy:
 - Never continue to Phase 4 unless all required regression checks pass.
 - Never continue to Phase 5 unless plan/progress/todo updates are complete.
 - If dirty-tree risk is detected at a critical step, stop and request user confirmation.
+- If task worktree already exists, skip `git worktree add` but still execute Phase 1 sync from trunk (`dev`) as source.
 
 ## Phase 0: Commit planning artifacts to trunk (required before worktree creation)
 
@@ -118,6 +119,14 @@ bash scripts/sync_worktree_config.sh
 bash scripts/sync_worktree_config.sh --apply
 ```
 
+Existing-worktree resume path (mandatory when target worktree already exists):
+
+```bash
+# run from trunk worktree root (<trunk> branch, usually dev), not from task worktree
+bash scripts/sync_worktree_config.sh
+bash scripts/sync_worktree_config.sh --apply
+```
+
 Windows fallback (when `bash` is unavailable or blocked):
 
 ```powershell
@@ -129,6 +138,7 @@ Notes:
 
 - Dry-run (`bash scripts/sync_worktree_config.sh`) is mandatory and must run before apply.
 - Sync gate is mandatory: if `apply_sync=true`, Phase 1 is successful only after both dry-run and apply succeed.
+- `sync_worktree_config` is directional (`current worktree -> other worktrees`), so when expecting `.env` / `frontend/.env.local` from trunk, run sync in trunk as source.
 - `bash` availability must be checked before sync commands:
   - if available: run `.sh` dry-run + apply.
   - if unavailable/blocked: must switch to `scripts/sync_worktree_config.ps1` dry-run + apply.
