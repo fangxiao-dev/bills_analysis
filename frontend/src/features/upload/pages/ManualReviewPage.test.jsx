@@ -427,7 +427,7 @@ describe("ManualReviewPage", () => {
     expect(nettoInput.className).not.toContain("review-cell-low-confidence");
   });
 
-  it("renders office type selector and sends type/receiver_ok in review payload", async () => {
+  it("renders office type/receiver_ok selectors and submits updated boolean payload", async () => {
     const actions = {
       submitReviewOnly: vi.fn(async () => true),
       queueMergeOnly: vi.fn(async () => true),
@@ -464,9 +464,12 @@ describe("ManualReviewPage", () => {
     expect(screen.getByText("Type")).toBeInTheDocument();
     expect(screen.getByText("Receiver OK")).toBeInTheDocument();
     const typeSelect = screen.getByLabelText("OFFICE Review Items-type-office:invoice-1");
+    const receiverOkSelect = screen.getByLabelText("OFFICE Review Items-receiver_ok-office:invoice-1");
     expect(typeSelect).toBeInTheDocument();
+    expect(receiverOkSelect).toBeInTheDocument();
     fireEvent.change(typeSelect, { target: { value: "Miete" } });
-    expect(screen.getByDisplayValue("True")).toBeInTheDocument();
+    fireEvent.change(receiverOkSelect, { target: { value: "False" } });
+    expect(receiverOkSelect).toHaveValue("False");
 
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
     await waitFor(() => {
@@ -475,7 +478,7 @@ describe("ManualReviewPage", () => {
 
     const submittedRows = actions.submitReviewOnly.mock.calls[0][0];
     expect(submittedRows[0].result.type).toBe("Miete");
-    expect(submittedRows[0].result.receiver_ok).toBe(true);
+    expect(submittedRows[0].result.receiver_ok).toBe(false);
     expect(submittedRows[0].result.receiver).toBeUndefined();
   });
 

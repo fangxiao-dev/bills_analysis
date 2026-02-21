@@ -166,7 +166,12 @@ class LocalPipelineBackend:
         """Initialize output root and per-file timeout controls."""
 
         self.root = (root or (Path("outputs") / "webapp")).resolve()
-        self.file_timeout_sec = float(os.getenv("BACKEND_FILE_TIMEOUT_SEC", "180"))
+        timeout_raw = str(os.getenv("BACKEND_FILE_TIMEOUT_SEC", "0")).strip()
+        try:
+            timeout_value = float(timeout_raw)
+        except ValueError:
+            timeout_value = 0.0
+        self.file_timeout_sec: float | None = timeout_value if timeout_value > 0 else None
 
     async def process_batch(
         self,
@@ -271,6 +276,16 @@ class LocalPipelineBackend:
     ) -> dict[str, Any]:
         """Execute one file processing in thread pool with timeout guard."""
 
+        if self.file_timeout_sec is None:
+            return await asyncio.to_thread(
+                self._process_one_file,
+                row_id=row_id,
+                batch=batch,
+                item=item,
+                archive_root=archive_root,
+                organized_root=organized_root,
+                max_pages=max_pages,
+            )
         try:
             return await asyncio.wait_for(
                 asyncio.to_thread(

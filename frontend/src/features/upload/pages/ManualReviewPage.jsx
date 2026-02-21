@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import { AppFrame } from "../../../app/AppFrame";
 import { API_BASE_URL } from "../../../config/env";
 import { AlertBanner } from "../../../shared/ui/AlertBanner";
@@ -35,7 +34,6 @@ const OFFICE_TYPE_OPTIONS = [
  * Manual review page for editing row-level fields and controlling merge actions.
  */
 export function ManualReviewPage() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const { client, state, actions, flags } = useUploadFlowContext();
   const effectiveBatchType = state.batch?.type || state.batchType || "daily";
@@ -69,7 +67,7 @@ export function ManualReviewPage() {
       { key: "brutto", label: t("review.columns.brutto") },
       { key: "netto", label: t("review.columns.netto") },
       { key: "tax_id", label: t("review.columns.tax_id") },
-      { key: "receiver_ok", label: t("review.columns.receiver_ok") },
+      { key: "receiver_ok", label: t("review.columns.receiver_ok"), inputType: "select", options: ["False", "True"] },
     ],
     [t],
   );
@@ -478,9 +476,6 @@ export function ManualReviewPage() {
                 {t("review.openMergedResult")}
               </Button>
             ) : null}
-            <Button type="button" variant="ghost" onClick={() => navigate("/")}>
-              {t("common.backToUpload")}
-            </Button>
             {showRetryMerge ? (
               <Button type="button" variant="danger" onClick={() => void onRetryMerge()} disabled={flags.isBusy}>
                 {t("review.retryMerge")}

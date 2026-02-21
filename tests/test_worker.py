@@ -80,8 +80,8 @@ def test_worker_sets_review_ready_when_any_file_extracted() -> None:
     asyncio.run(_run())
 
 
-def test_worker_sets_failed_when_all_files_failed() -> None:
-    """Worker should mark batch failed when processing summary has zero extracted rows."""
+def test_worker_keeps_review_ready_when_all_files_failed() -> None:
+    """Worker should keep batch review-ready even when all files fail extraction."""
 
     async def _run() -> None:
         repo = InMemoryBatchRepository()
@@ -108,8 +108,46 @@ def test_worker_sets_failed_when_all_files_failed() -> None:
         await worker.run_once()
         saved = await repo.get(batch.batch_id)
         assert saved is not None
-        assert saved.status == BatchStatus.FAILED
-        assert saved.error == "All files failed during extraction."
+        assert saved.status == BatchStatus.REVIEW_READY
+        assert saved.error is None
         assert [item.status for item in saved.inputs] == ["failed", "failed"]
+
+    asyncio.run(_run())
+
+
+def test_worker_sets_failed_on_system_exception() -> None:
+    """Worker should mark batch failed only when process backend raises system exception."""
+
+    class RaisingProcessingBackend(StubProcessingBackend):
+        """Backend stub that raises runtime error during process."""
+
+        async def process_batch(self, batch: BatchRecord, *, on_file_done=None) -> dict[str, Any]:
+            """Raise a deterministic runtime error to simulate system-level failure."""
+
+            raise RuntimeError("system failure")
+
+    async def _run() -> None:
+        repo = InMemoryBatchRepository()
+        queue = InMemoryTaskQueue()
+        backend = RaisingProcessingBackend(done_events=[], summary={})
+        worker = BatchWorker(repo=repo, queue=queue, backend=backend)
+
+        req = CreateBatchRequest(
+            type="daily",
+            run_date="04/02/2026",
+            inputs=[{"path": "a.pdf", "category": "bar"}],
+            metadata={},
+        )
+        batch = BatchRecord.new(req)
+        await repo.create(batch)
+        await queue.enqueue(QueueTask.new(batch_id=batch.batch_id, task_type=TaskType.PROCESS_BATCH))
+
+        await worker.run_once()
+        saved = await repo.get(batch.batch_id)
+        assert saved is not None
+        assert saved.status == BatchStatus.FAILED
+        assert saved.error == "system failure"
+        assert [item.status for item in saved.inputs] == ["failed"]
+        assert [item.error for item in saved.inputs] == ["system failure"]
 
     asyncio.run(_run())

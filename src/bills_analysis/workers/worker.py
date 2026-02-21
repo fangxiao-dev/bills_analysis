@@ -111,16 +111,12 @@ class BatchWorker:
                 process_output = await self.backend.process_batch(batch, on_file_done=_on_file_done)
                 review_rows = process_output.get("review_rows", [])
                 artifacts = process_output.get("artifacts", process_output)
-                summary = process_output.get("processing_summary", {})
-                extracted_count = int(summary.get("extracted_count", 0) or 0)
                 batch.review_rows = review_rows
                 batch.artifacts.update(artifacts)
-                if extracted_count > 0:
-                    batch.status = BatchStatus.REVIEW_READY
-                    batch.error = None
-                else:
-                    batch.status = BatchStatus.FAILED
-                    batch.error = "All files failed during extraction."
+                # Batch-level FAILED is reserved for system/runtime failures only.
+                # File-level extraction failures are represented in `inputs[*].status/error`.
+                batch.status = BatchStatus.REVIEW_READY
+                batch.error = None
                 batch.updated_at = datetime.now(UTC)
                 await self.repo.save(batch)
                 return
