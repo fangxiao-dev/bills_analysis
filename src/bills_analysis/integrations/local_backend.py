@@ -120,7 +120,7 @@ def _resolve_receiver_address_ok(office_info: dict[str, Any]) -> bool | None:
 def _copy_pdf_to_organized_dir(
     *,
     compressed_pdf: Path,
-    output_root: Path,
+    organized_root: Path,
     category: str,
     run_date: str,
     extracted_result: dict[str, Any],
@@ -132,7 +132,7 @@ def _copy_pdf_to_organized_dir(
         get_compressed_pdf_name,
     )
 
-    organized_dir = output_root / "organized" / get_archive_subdir_name(run_date, category)
+    organized_dir = organized_root / get_archive_subdir_name(run_date, category)
     organized_dir.mkdir(parents=True, exist_ok=True)
     target_name = get_compressed_pdf_name(category, extracted_result, run_date) or compressed_pdf.name
     target_path = organized_dir / target_name
@@ -163,7 +163,7 @@ class LocalPipelineBackend:
         out_dir.mkdir(parents=True, exist_ok=True)
         archive_root = out_dir / "archive"
         archive_root.mkdir(parents=True, exist_ok=True)
-        organized_root = out_dir / "organized"
+        organized_root = self.root.parent / "organized"
         organized_root.mkdir(parents=True, exist_ok=True)
         now = datetime.now(UTC).isoformat()
         results_path = out_dir / "results.json"
@@ -176,6 +176,7 @@ class LocalPipelineBackend:
                     batch=batch,
                     item=item,
                     archive_root=archive_root,
+                    organized_root=organized_root,
                 )
             )
             for idx, item in enumerate(batch.inputs, start=1)
@@ -239,6 +240,7 @@ class LocalPipelineBackend:
         batch: BatchRecord,
         item: InputFile,
         archive_root: Path,
+        organized_root: Path,
     ) -> dict[str, Any]:
         """Execute one file processing in thread pool with timeout guard."""
 
@@ -250,6 +252,7 @@ class LocalPipelineBackend:
                     batch=batch,
                     item=item,
                     archive_root=archive_root,
+                    organized_root=organized_root,
                 ),
                 timeout=self.file_timeout_sec,
             )
@@ -271,6 +274,7 @@ class LocalPipelineBackend:
         batch: BatchRecord,
         item: InputFile,
         archive_root: Path,
+        organized_root: Path,
     ) -> dict[str, Any]:
         """Run compression + extraction for one input file with safe fallbacks."""
 
@@ -328,7 +332,7 @@ class LocalPipelineBackend:
             try:
                 organized_path = _copy_pdf_to_organized_dir(
                     compressed_pdf=Path(preview_path_raw),
-                    output_root=archive_root.parent,
+                    organized_root=organized_root,
                     category=category,
                     run_date=batch.run_date or "",
                     extracted_result=row.get("result") or {},

@@ -748,14 +748,17 @@ def test_local_backend_calls_preprocess_and_extract(monkeypatch: pytest.MonkeyPa
     assert called["analyze"] == 1
     assert Path(artifacts["artifacts"]["result_json_path"]).exists()
     assert Path(artifacts["artifacts"]["review_json_path"]).exists()
-    assert Path(artifacts["artifacts"]["organized_root"]).exists()
+    organized_root = Path(artifacts["artifacts"]["organized_root"])
+    assert organized_root.exists()
+    assert organized_root.resolve() == (backend.root.parent / "organized").resolve()
     assert len(artifacts["review_rows"]) == 1
 
     results_payload = json.loads(Path(artifacts["artifacts"]["result_json_path"]).read_text(encoding="utf-8"))
     first_item = results_payload["items"][0]
     assert first_item.get("organized_path")
-    assert Path(first_item["organized_path"]).exists()
-    assert "organized" in Path(first_item["organized_path"]).parts
+    organized_path = Path(first_item["organized_path"])
+    assert organized_path.exists()
+    assert organized_root.resolve() in organized_path.resolve().parents
 
 
 def test_local_backend_persists_office_di_fields_artifact(monkeypatch: pytest.MonkeyPatch) -> None:
