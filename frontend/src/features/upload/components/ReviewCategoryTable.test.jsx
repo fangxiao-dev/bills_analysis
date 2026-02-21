@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { ReviewCategoryTable } from "./ReviewCategoryTable.jsx";
 
 const columns = [
@@ -166,5 +166,97 @@ describe("ReviewCategoryTable low-confidence highlight", () => {
     expect(typeSelect.tagName).toBe("SELECT");
     expect(typeSelect).toHaveValue("CustomType");
     expect(screen.getByRole("option", { name: "CustomType" })).toBeInTheDocument();
+  });
+
+  it("shows clickable skip warning icon and opens inline popover message", () => {
+    const rows = [
+      {
+        id: "row-7",
+        filename: "skip.pdf",
+        brutto: "",
+        netto: "",
+        skip_reason: "page_count=6 > max_pages=4",
+        score: {},
+      },
+    ];
+
+    render(
+      <ReviewCategoryTable
+        title="BAR"
+        description="test"
+        rows={rows}
+        columns={columns}
+        onChangeCell={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText("Exceeded max page limit 4, please enter manually.")).not.toBeInTheDocument();
+
+    const skipIcon = screen.getByRole("button", { name: "View skip reason" });
+    expect(skipIcon).toBeInTheDocument();
+    fireEvent.click(skipIcon);
+    expect(screen.getByText("Exceeded max page limit 4, please enter manually.")).toBeInTheDocument();
+  });
+
+  it("closes skip popover when clicking outside", () => {
+    const rows = [
+      {
+        id: "row-8",
+        filename: "skip.pdf",
+        brutto: "",
+        netto: "",
+        skip_reason: "page_count=6 > max_pages=4",
+        score: {},
+      },
+    ];
+    render(
+      <ReviewCategoryTable
+        title="BAR"
+        description="test"
+        rows={rows}
+        columns={columns}
+        onChangeCell={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View skip reason" }));
+    expect(screen.getByText("Exceeded max page limit 4, please enter manually.")).toBeInTheDocument();
+    fireEvent.click(document.body);
+    expect(screen.queryByText("Exceeded max page limit 4, please enter manually.")).not.toBeInTheDocument();
+  });
+
+  it("uses compact width class for brutto/netto/receiver_ok fields", () => {
+    const officeColumns = [
+      { key: "filename", label: "File", readOnly: true },
+      { key: "brutto", label: "Brutto" },
+      { key: "netto", label: "Netto" },
+      { key: "receiver_ok", label: "Receiver OK" },
+      { key: "sender", label: "Sender" },
+    ];
+    const rows = [
+      {
+        id: "row-9",
+        filename: "office.pdf",
+        brutto: "1234.56",
+        netto: "1000.00",
+        receiver_ok: "True",
+        sender: "Long Sender Name",
+        score: {},
+      },
+    ];
+    render(
+      <ReviewCategoryTable
+        title="OFFICE"
+        description="test"
+        rows={rows}
+        columns={officeColumns}
+        onChangeCell={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("OFFICE-brutto-row-9").className).toContain("review-cell-input-compact");
+    expect(screen.getByLabelText("OFFICE-netto-row-9").className).toContain("review-cell-input-compact");
+    expect(screen.getByLabelText("OFFICE-receiver_ok-row-9").className).toContain("review-cell-input-compact");
+    expect(screen.getByLabelText("OFFICE-sender-row-9").className).not.toContain("review-cell-input-compact");
   });
 });

@@ -646,6 +646,17 @@
           "additionalProperties": true,
           "title": "Score",
           "type": "object"
+        },
+        "skip_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Skip Reason"
         }
       },
       "required": [

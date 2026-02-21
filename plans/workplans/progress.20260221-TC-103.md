@@ -1,7 +1,7 @@
 # Progress — TC-103
 **plan_id**: 20260221-TC-103
 
-## Status: PLANNED
+## Status: DONE
 
 ## Completed
 
@@ -11,20 +11,25 @@
 
 ## In Progress
 
-- [ ] 实现阶段（待开始）
+- [x] 实现阶段（已完成）
 
 ## Next Steps
 
-按 task_plan.20260221-TC-103.md 顺序实现：
+已完成实现与验证：
 
-1. `local_backend.py` — process_batch 读 max_pages + _process_one_file 加页数检查
-2. `local_backend.py` — review_payload 加 skip_reason
-3. `api_responses.py` — BatchReviewRow 加 skip_reason 字段
-4. `api/main.py` — get_batch_review_rows 路由加 skip_reason
-5. `ManualReviewPage.jsx` — buildDraftRowsFromBackend 保留 skip_reason
-6. `ReviewCategoryTable.jsx` + `styles.css` — ⚠ 图标
-7. i18n 三语言 key
-8. 运行 contract 测试验证
+1. 后端 `local_backend.py` 读取 `tests/config.json:max_pages`，在 Azure 前做页数检查；超限写 `skip_reason` 并保留空 review row（含 run_date）。
+2. 后端 review payload 增加 `skip_reason`，并通过 API model/route 透传到前端。
+3. 前端 `ManualReviewPage.jsx` 保留 `skip_reason` 字段。
+4. 前端 `ReviewCategoryTable.jsx` 增加 ⚠ 交互：点击触发浮层提示（portal 到 `document.body`），支持点击空白关闭。
+5. 提示文案改为用户可理解文本：`超过最大页数限制 x，请手动输入。`
+6. 表单宽度优化：`brutto/netto/receiver_ok` 使用 compact 宽度，其它字段保持不变。
+7. i18n 新增 `skip reason` 文案键（en/de/zh）。
+8. OpenAPI baseline 已更新，契约测试通过。
+
+## Verification
+
+- `uv run pytest tests/test_api_schema_v1.py -q` 通过（37 passed）。
+- `pnpm --dir frontend test -- --run src/features/upload/components/ReviewCategoryTable.test.jsx` 通过（9 passed）。
 
 ## Blockers
 

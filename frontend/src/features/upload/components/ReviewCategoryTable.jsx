@@ -1,4 +1,6 @@
 import { useTranslation } from "react-i18next";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { isProblemField } from "../utils/reviewConfidence";
 
 /**
@@ -15,6 +17,32 @@ import { isProblemField } from "../utils/reviewConfidence";
  */
 export function ReviewCategoryTable({ title, description, rows, columns, onChangeCell, onViewRow }) {
   const { t } = useTranslation();
+  const [skipPopover, setSkipPopover] = useState(null);
+
+  useEffect(() => {
+    if (!skipPopover) {
+      return undefined;
+    }
+    const onDocumentClick = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      if (target.closest(".review-skip-icon-btn") || target.closest(".review-skip-popover")) {
+        return;
+      }
+      setSkipPopover(null);
+    };
+    const onViewportChange = () => setSkipPopover(null);
+    document.addEventListener("click", onDocumentClick);
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("scroll", onViewportChange, true);
+    return () => {
+      document.removeEventListener("click", onDocumentClick);
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange, true);
+    };
+  }, [skipPopover]);
 
   if (!rows.length) {
     return null;
@@ -48,7 +76,7 @@ export function ReviewCategoryTable({ title, description, rows, columns, onChang
                       <select
                         value={row[column.key] ?? ""}
                         onChange={(event) => onChangeCell(row.id, column.key, event.target.value)}
-                        className={`review-cell-input${isProblemField(row, column.key) ? " review-cell-low-confidence" : ""}`}
+                        className={`review-cell-input${isCompactField(column.key) ? " review-cell-input-compact" : ""}${isProblemField(row, column.key) ? " review-cell-low-confidence" : ""}`}
                         aria-label={`${title}-${column.key}-${row.id}`}
                       >
                         {buildSelectOptions(row[column.key], column.options).map((option) => (
@@ -62,13 +90,44 @@ export function ReviewCategoryTable({ title, description, rows, columns, onChang
                         type="text"
                         value={row[column.key] ?? ""}
                         onChange={(event) => onChangeCell(row.id, column.key, event.target.value)}
-                        className={`review-cell-input${isProblemField(row, column.key) ? " review-cell-low-confidence" : ""}`}
+                        className={`review-cell-input${isCompactField(column.key) ? " review-cell-input-compact" : ""}${isProblemField(row, column.key) ? " review-cell-low-confidence" : ""}`}
                         aria-label={`${title}-${column.key}-${row.id}`}
                       />
                     )}
                   </td>
                 ))}
                 <td>
+                  {row.skip_reason ? (
+                    <button
+                      type="button"
+                      className="review-skip-icon-btn"
+                      aria-label={t("review.skipReasonAria")}
+                      onClick={(event) => {
+                        const triggerRect = event.currentTarget.getBoundingClientRect();
+                        const floatingWidth = 280;
+                        const estimatedHeight = 74;
+                        const viewportPadding = 8;
+                        const placeAbove = triggerRect.top >= estimatedHeight + 12;
+                        const top = placeAbove ? triggerRect.top - estimatedHeight - 8 : triggerRect.bottom + 8;
+                        const left = Math.min(
+                          Math.max(viewportPadding, triggerRect.left - 8),
+                          window.innerWidth - floatingWidth - viewportPadding,
+                        );
+                        setSkipPopover((prev) =>
+                          prev?.rowId === row.id
+                            ? null
+                            : {
+                                rowId: row.id,
+                                top,
+                                left,
+                                message: buildUserFriendlySkipReason(t, row.skip_reason),
+                              },
+                        );
+                      }}
+                    >
+                      ⚠
+                    </button>
+                  ) : null}
                   <a
                     href="#"
                     className="review-view-link"
@@ -86,6 +145,17 @@ export function ReviewCategoryTable({ title, description, rows, columns, onChang
           </tbody>
         </table>
       </div>
+      {skipPopover
+        ? createPortal(
+            <div
+              className="review-skip-popover"
+              style={{ top: `${skipPopover.top}px`, left: `${skipPopover.left}px` }}
+            >
+              {skipPopover.message}
+            </div>,
+            document.body,
+          )
+        : null}
     </section>
   );
 }
@@ -107,4 +177,27 @@ function buildSelectOptions(currentValue, options) {
     return [{ value, label: value }, ...normalized];
   }
   return normalized;
+}
+
+/**
+ * Return whether this field should use compact input width in review table.
+ * @param {string} key
+ */
+function isCompactField(key) {
+  return key === "brutto" || key === "netto" || key === "receiver_ok";
+}
+
+/**
+ * Build user-facing skip message from backend skip_reason payload.
+ * @param {(key: string, options?: Record<string, unknown>) => string} t
+ * @param {string} skipReason
+ */
+function buildUserFriendlySkipReason(t, skipReason) {
+  const text = String(skipReason || "");
+  const match = text.match(/max_pages=(\d+)/);
+  const limit = match?.[1];
+  if (limit) {
+    return t("review.skipReasonExceeded", { limit });
+  }
+  return t("review.skipReasonFallback");
 }

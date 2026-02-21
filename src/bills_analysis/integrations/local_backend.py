@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+import fitz
 from openpyxl import Workbook
 
 from bills_analysis.excel_ops import normalize_date, write_datum_cell
@@ -88,6 +89,22 @@ def _to_excel_hyperlink(value: Any) -> str | None:
         return str(path)
 
 
+def _safe_pdf_page_count(pdf_path: Path) -> int | None:
+    """Read page count defensively and skip tiny placeholder files used in tests."""
+
+    try:
+        # Avoid PyMuPDF native crashes on malformed tiny placeholder PDFs.
+        if pdf_path.stat().st_size < 1024:
+            return None
+    except Exception:
+        return None
+    try:
+        with fitz.open(pdf_path) as doc:
+            return int(doc.page_count)
+    except Exception:
+        return None
+
+
 def _resolve_receiver_ok(office_info: dict[str, Any]) -> bool | None:
     """Normalize Office receiver consistency output to bool using model output and configurable expected receiver."""
     expected_receiver = os.getenv("OFFICE_EXPECTED_RECEIVER", "Ramen Ippin Dortmund GmbH").strip()
@@ -141,6 +158,13 @@ class LocalPipelineBackend:
         now = datetime.now(UTC).isoformat()
         results_path = out_dir / "results.json"
         review_path = out_dir / "review_rows.json"
+        max_pages = 4
+        config_path = Path("tests") / "config.json"
+        try:
+            config_payload = json.loads(config_path.read_text(encoding="utf-8"))
+            max_pages = int(config_payload.get("max_pages", max_pages))
+        except Exception:
+            max_pages = 4
 
         tasks = [
             asyncio.create_task(
@@ -149,6 +173,7 @@ class LocalPipelineBackend:
                     batch=batch,
                     item=item,
                     archive_root=archive_root,
+                    max_pages=max_pages,
                 )
             )
             for idx, item in enumerate(batch.inputs, start=1)
@@ -177,6 +202,7 @@ class LocalPipelineBackend:
                 "result": row["result"],
                 "score": row["score"],
                 "preview_path": row.get("preview_path"),
+                "skip_reason": row.get("skip_reason"),
             }
             for row in rows
         ]
@@ -211,6 +237,7 @@ class LocalPipelineBackend:
         batch: BatchRecord,
         item: InputFile,
         archive_root: Path,
+        max_pages: int,
     ) -> dict[str, Any]:
         """Execute one file processing in thread pool with timeout guard."""
 
@@ -222,6 +249,7 @@ class LocalPipelineBackend:
                     batch=batch,
                     item=item,
                     archive_root=archive_root,
+                    max_pages=max_pages,
                 ),
                 timeout=self.file_timeout_sec,
             )
@@ -243,6 +271,7 @@ class LocalPipelineBackend:
         batch: BatchRecord,
         item: InputFile,
         archive_root: Path,
+        max_pages: int,
     ) -> dict[str, Any]:
         """Run compression + extraction for one input file with safe fallbacks."""
 
@@ -270,6 +299,11 @@ class LocalPipelineBackend:
             row["preview_path"] = str(compressed_path)
         except Exception as exc:
             row["archive_error"] = str(exc)
+
+        page_count = _safe_pdf_page_count(source_path)
+        if page_count is not None and page_count > max_pages:
+            row["skip_reason"] = f"page_count={page_count} > max_pages={max_pages}"
+            return row
 
         model_id = "prebuilt-invoice" if category == "office" else "prebuilt-receipt"
         try:

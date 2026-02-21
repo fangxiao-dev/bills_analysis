@@ -129,6 +129,7 @@ class BatchReviewRow(StrictModel):
     result: dict[str, Any] = Field(default_factory=dict)
     score: dict[str, Any] = Field(default_factory=dict)
     preview_url: str | None = None
+    skip_reason: str | None = None
 
 
 class BatchReviewRowsResponse(StrictModel):
