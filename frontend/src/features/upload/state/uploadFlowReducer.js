@@ -172,7 +172,6 @@ export function uploadFlowReducer(state, action) {
     case "POLL_FAILURE":
       return {
         ...state,
-        phase: "failed",
         systemError: action.message,
       };
 

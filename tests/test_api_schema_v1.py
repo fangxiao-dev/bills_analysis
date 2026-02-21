@@ -17,6 +17,13 @@ from bills_analysis.integrations.local_backend import LocalPipelineBackend
 from bills_analysis.models.api_requests import CreateBatchRequest, CreateBatchUploadForm, MergeRequest
 from bills_analysis.models.internal import BatchRecord
 
+
+async def _append_file_done_event(events: list[dict[str, Any]], event: dict[str, Any]) -> None:
+    """Collect backend per-file completion callbacks in tests."""
+
+    events.append(event)
+
+
 def _get_test_client_and_app():
     """Lazily import FastAPI app to allow model-only tests without web deps."""
 
@@ -813,8 +820,8 @@ def test_local_backend_persists_office_di_fields_artifact(monkeypatch: pytest.Mo
     assert saved["invoice_no"] == "INV-RAW-001"
 
 
-def test_local_backend_process_batch_raises_on_extract_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Any file extraction failure should raise to trigger worker failed status."""
+def test_local_backend_process_batch_tracks_mixed_result_and_summary(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Backend should keep mixed success/failure rows and return processing summary."""
 
     def fake_compress(pdf_path: Path, *, dest_dir: Path, dpi: int, name_suffix: str) -> Path:
         """Stub compression helper returning an archive path.""" 
@@ -825,28 +832,59 @@ def test_local_backend_process_batch_raises_on_extract_failure(monkeypatch: pyte
         return archived
 
     def fake_analyze(pdf_path: Path, *, model_id: str, return_fields: bool) -> Any:
-        """Stub extraction helper that simulates DI call failure.""" 
+        """Stub extraction helper that fails for one file and succeeds for another.""" 
 
-        raise RuntimeError("simulated azure failure")
+        if pdf_path.name == "bad.pdf":
+            raise RuntimeError("simulated azure failure")
+        return {
+            "store_name": "Demo",
+            "brutto": "1.00",
+            "netto": "0.80",
+            "total_tax": "0.20",
+            "confidence_store_name": 0.9,
+            "confidence_brutto": 0.9,
+            "confidence_netto": 0.9,
+            "confidence_total_tax": 0.9,
+        }
 
     monkeypatch.setattr("bills_analysis.integrations.local_backend._compress_pdf_for_archive", fake_compress)
     monkeypatch.setattr("bills_analysis.integrations.local_backend._analyze_pdf_with_azure", fake_analyze)
 
     test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
     test_root.mkdir(parents=True, exist_ok=True)
-    src_pdf = test_root / "input.pdf"
-    src_pdf.write_bytes(b"%PDF-1.4\nsource\n%%EOF")
+    bad_pdf = test_root / "bad.pdf"
+    bad_pdf.write_bytes(b"%PDF-1.4\nbad\n%%EOF")
+    good_pdf = test_root / "good.pdf"
+    good_pdf.write_bytes(b"%PDF-1.4\ngood\n%%EOF")
     req = CreateBatchRequest(
         type="daily",
         run_date="04/02/2026",
-        inputs=[{"path": str(src_pdf), "category": "zbon"}],
+        inputs=[
+            {"path": str(bad_pdf), "category": "bar"},
+            {"path": str(good_pdf), "category": "zbon"},
+        ],
         metadata={},
     )
     batch = BatchRecord.new(req)
     backend = LocalPipelineBackend(root=test_root / "out")
+    done_events: list[dict[str, Any]] = []
 
-    with pytest.raises(RuntimeError):
-        asyncio.run(backend.process_batch(batch))
+    output = asyncio.run(
+        backend.process_batch(
+            batch,
+            on_file_done=lambda event: _append_file_done_event(done_events, event),
+        )
+    )
+    assert output["processing_summary"]["total_count"] == 2
+    assert output["processing_summary"]["extracted_count"] == 1
+    assert output["processing_summary"]["failed_count"] == 1
+
+    rows = output["review_rows"]
+    assert len(rows) == 2
+    by_name = {row["filename"]: row for row in rows}
+    assert by_name["bad.pdf"]["result"]["run_date"] == "04/02/2026"
+    assert by_name["good.pdf"]["result"]["brutto"] == "1.00"
+    assert {event["status"] for event in done_events} == {"failed", "extracted"}
 
 
 def test_local_backend_merge_builds_non_empty_daily_validated_excel() -> None:

@@ -27,7 +27,13 @@
 ## Issues Encountered
 | Issue | Resolution |
 |---|---|
-| | |
+| `uv` default cache path permission denied in sandbox (`%LOCALAPPDATA%\\uv\\cache`) | Set `UV_CACHE_DIR` to worktree-local path when running tests. |
+| frontend vitest failed in sandbox with `esbuild spawn EPERM` | Re-ran frontend test command with elevated permission to complete verification. |
+
+## Final Notes
+- Backend now supports per-file done callback and summary-based finalization without changing v1 public schema.
+- Worker no longer overwrites all input statuses to extracted at success end; per-file statuses are preserved.
+- Frontend polling failure no longer forces UI phase to failed, reducing false-failure UX on transient network errors.
 
 ## Resources
 - plans/todo_current.md

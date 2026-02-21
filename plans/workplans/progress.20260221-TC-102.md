@@ -27,15 +27,26 @@
   - Locked test strategy for backend/worker/frontend
 
 ### Phase 3: Implementation
-- **Status:** pending
-- Notes:
-  - 用户要求在当前目录仅完成 plan + commit + 创建开发 worktree
-  - 具体编码将转移到独立 worktree 执行
+- **Status:** completed
+- Actions taken:
+  - Updated backend processing port to support `on_file_done` callback for per-file completion persistence.
+  - Refactored local pipeline processing to emit per-file done events, keep mixed success/failure rows, and return `processing_summary` counts.
+  - Updated worker logic to persist per-file status immediately and finalize batch status using summary:
+    - `review_ready` when `extracted_count > 0`
+    - `failed` when all files failed
+  - Updated frontend reducer `POLL_FAILURE` behavior to preserve current phase and only set `systemError`.
+  - Added/updated tests for backend mixed-result semantics, worker finalization rules, and frontend poll-failure behavior.
+
+### Phase 6: Post-merge Manual Verification
+- **Status:** completed
+- Actions taken:
+  - User manually validated TC-102 flow and confirmed behavior is OK.
 
 ## Test Results
 | Test | Input | Expected | Actual | Status |
 |---|---|---|---|---|
-| | | | | |
+| `uv run pytest tests/test_worker.py tests/test_api_schema_v1.py -q` | TC-102 backend + worker related suites | pass | `38 passed` | ✅ |
+| `pnpm --dir frontend test -- --run src/features/upload/state/uploadFlowReducer.test.js` | frontend reducer behavior | pass | `12 files / 76 tests passed` | ✅ |
 
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |
