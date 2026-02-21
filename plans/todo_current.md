@@ -16,3 +16,4 @@
 | TC-101 | Office type错误样本收集：在review页面添加"Report Type Error"按钮，一键将batch中间结果复制到dataset目录，供开发者改进GPT-4o-mini分类prompt | PLANNED | 20260221-TC-101 | 2026-02-21T10:09:25+01:00 |  |
 | TC-102 | 上传解析改为单文件实时状态跟踪：单文件超时/报错独立失败；取消batch级timeout；仅全失败或batch级异常才标记batch失败 | DONE | 20260221-TC-102 | 2026-02-21T15:06:36+01:00 | TC-102 per-file status tracking, file-level timeout/failure semantics |
 | TC-103 | 多页PDF跳过提取但保留空行供手填：local_backend加max_pages检查（从config读取），超限写skip_reason并生成空row；BatchReviewRow加skip_reason字段；review表格对skip_reason非空条目显示⚠图标 | DONE | 20260221-TC-103 | 2026-02-21T16:49:22+01:00 |  |
+| TC-104 | 1）upload阶段添加PDF页数超限⚠提醒+查看PDF；2）review阶段支持删除行（不影响JSON，仅影响最终输出） | PLANNED | 20260221-TC-104 | 2026-02-21T17:32:17+01:00 |  |
