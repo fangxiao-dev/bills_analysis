@@ -44,3 +44,16 @@ local_backend._process_one_file
 3. **`skip_reason` 是 additive optional 字段**：
    - v1 contract 兼容：只新增可选字段，不删除/改类型已有字段。
    - 前端对无此字段的旧 row 静默处理（`""` fallback）。
+
+## Final Findings (Implementation)
+
+1. **PyMuPDF 兼容性风险（Windows 测试占位 PDF）**
+   - 直接对极小“伪 PDF”做 `fitz.open` 在 Windows 下可能触发底层 fatal exception（非 Python 异常）。
+   - 已在 `local_backend.py` 增加 `_safe_pdf_page_count`：仅在文件大小安全阈值以上尝试读取页数，否则返回 `None` 并继续原流程。
+
+2. **Skip 提示 UX 调整**
+   - 由 hover title 改为 click 触发浮层（portal 到 `document.body`），避免表格容器裁剪。
+   - 浮层优先显示在按钮上方，空间不足自动显示在下方；点击空白自动关闭。
+
+3. **表单可用性调整**
+   - `brutto/netto/receiver_ok` 使用紧凑输入宽度，匹配典型 7 字符输入长度，提高 review 视图信息密度。

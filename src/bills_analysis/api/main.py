@@ -331,6 +331,7 @@ async def get_batch_review_rows(batch_id: str, request: Request) -> BatchReviewR
                 result=dict(row.get("result") or {}),
                 score=dict(row.get("score") or {}),
                 preview_url=preview_url,
+                skip_reason=row.get("skip_reason") or None,
             )
         )
     return BatchReviewRowsResponse(batch_id=batch.batch_id, status=batch.status, rows=items)

@@ -897,6 +897,64 @@ def test_local_backend_process_batch_tracks_mixed_result_and_summary(monkeypatch
     assert {event["status"] for event in done_events} == {"failed", "extracted"}
 
 
+def test_local_backend_skips_over_max_pages_and_keeps_empty_review_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Files over max_pages should skip Azure extraction and still emit review row with skip_reason."""
+
+    class _DocStub:
+        """Minimal fitz document stub exposing page_count and context manager protocol."""
+
+        page_count = 6
+
+        def __enter__(self) -> "_DocStub":
+            """Return self for context manager enter."""
+
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            """No-op context manager exit for fitz open stub."""
+
+            return None
+
+    def fake_compress(pdf_path: Path, *, dest_dir: Path, dpi: int, name_suffix: str) -> Path:
+        """Stub compression helper returning deterministic archive path."""
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        archived = dest_dir / f"{pdf_path.stem}_{name_suffix}.pdf"
+        archived.write_bytes(b"%PDF-1.4\narchived\n%%EOF")
+        return archived
+
+    def fake_analyze(pdf_path: Path, *, model_id: str, return_fields: bool) -> Any:
+        """Fail hard if Azure analyze is called for over-page-limit files."""
+
+        raise AssertionError("azure analyze should be skipped when page count exceeds max_pages")
+
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._compress_pdf_for_archive", fake_compress)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._analyze_pdf_with_azure", fake_analyze)
+    monkeypatch.setattr("fitz.open", lambda path: _DocStub())
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    src_pdf = test_root / "too_many_pages.pdf"
+    src_pdf.write_bytes(b"%PDF-1.4\nsource\n%%EOF\n" + (b"0" * 2048))
+    req = CreateBatchRequest(
+        type="daily",
+        run_date="04/02/2026",
+        inputs=[{"path": str(src_pdf), "category": "zbon"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    output = asyncio.run(backend.process_batch(batch))
+    assert len(output["review_rows"]) == 1
+    row = output["review_rows"][0]
+    assert row["filename"] == "too_many_pages.pdf"
+    assert row["result"] == {"run_date": "04/02/2026"}
+    assert isinstance(row.get("skip_reason"), str)
+    assert "page_count=6" in row["skip_reason"]
+    assert "max_pages=4" in row["skip_reason"]
+
+
 def test_local_backend_merge_builds_non_empty_daily_validated_excel() -> None:
     """Daily merge should build non-empty validated workbook from saved review results."""
 

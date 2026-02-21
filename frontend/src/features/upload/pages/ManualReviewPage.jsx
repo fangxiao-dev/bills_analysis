@@ -590,16 +590,17 @@ function buildDraftRowsFromBackend(rows, runDate, previous) {
     const rowId = normalizeCellValue(row.row_id, `${category || "unknown"}:${filename}:${index}`);
     const result = row.result && typeof row.result === "object" ? row.result : {};
     const current = previousMap.get(rowId);
-    const common = {
-      id: rowId,
-      category,
-      filename,
-      preview_url: normalizeCellValue(row.preview_url, ""),
-      preview_path: normalizeCellValue(row.preview_path, ""),
-      path: normalizeCellValue(row.path, ""),
-      score: row.score && typeof row.score === "object" ? row.score : {},
-      raw_result: result,
-    };
+      const common = {
+        id: rowId,
+        category,
+        filename,
+        preview_url: normalizeCellValue(row.preview_url, ""),
+        preview_path: normalizeCellValue(row.preview_path, ""),
+        path: normalizeCellValue(row.path, ""),
+        skip_reason: typeof row.skip_reason === "string" ? row.skip_reason : "",
+        score: row.score && typeof row.score === "object" ? row.score : {},
+        raw_result: result,
+      };
 
     if (category === "bar") {
       draft.bar.push({
