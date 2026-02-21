@@ -78,6 +78,9 @@ export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName 
           {files.map((entry, index) => {
             const inputStatus = hasBatchInputs ? resolveInputStatus(entry, index, batchInputs) : "pending";
             const skipReason = resolveSkipReason(entry, skipReasonByName);
+            // Override status to "skipped" when skip_reason is known, so the badge
+            // reflects the page-limit skip rather than showing a misleading "extracted".
+            const displayStatus = skipReason ? "skipped" : inputStatus;
             return (
               <tr key={entry.id} className="file-row">
                 <td className="font-medium text-ledger-ink">{entry.name}</td>
@@ -88,56 +91,58 @@ export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName 
                 </td>
                 <td className="text-ledger-smoke">{formatBytes(entry.size)}</td>
                 <td>
-                  <ItemStatusBadge status={inputStatus} t={t} />
+                  <ItemStatusBadge status={displayStatus} t={t} />
                 </td>
                 <td>
-                  {skipReason ? (
-                    <button
-                      type="button"
-                      className="review-skip-icon-btn"
-                      aria-label={t("review.skipReasonAria")}
-                      onClick={(event) => {
-                        const triggerRect = event.currentTarget.getBoundingClientRect();
-                        const floatingWidth = 280;
-                        const estimatedHeight = 74;
-                        const viewportPadding = 8;
-                        const placeAbove = triggerRect.top >= estimatedHeight + 12;
-                        const top = placeAbove ? triggerRect.top - estimatedHeight - 8 : triggerRect.bottom + 8;
-                        const left = Math.min(
-                          Math.max(viewportPadding, triggerRect.left - 8),
-                          window.innerWidth - floatingWidth - viewportPadding,
-                        );
-                        setSkipPopover((prev) =>
-                          prev?.entryId === entry.id
-                            ? null
-                            : { entryId: entry.id, top, left, message: buildUserFriendlySkipReason(t, skipReason) },
-                        );
-                      }}
-                    >
-                      ⚠
-                    </button>
-                  ) : null}
-                  {entry.file ? (
-                    <a
-                      href="#"
-                      className="review-view-link"
-                      title={t("review.openInNewTab")}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        let url = previewCacheRef.current.get(entry.id);
-                        if (!url) {
-                          url = URL.createObjectURL(entry.file);
-                          previewCacheRef.current.set(entry.id, url);
-                        }
-                        window.open(url, "_blank", "noopener,noreferrer");
-                      }}
-                    >
-                      {t("review.table.view")}
-                    </a>
-                  ) : null}
-                  <Button type="button" variant="danger" className="px-2 py-1 text-xs" onClick={() => onRemove(entry.id)}>
-                    {t("common.remove")}
-                  </Button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {skipReason ? (
+                      <button
+                        type="button"
+                        className="review-skip-icon-btn"
+                        aria-label={t("review.skipReasonAria")}
+                        onClick={(event) => {
+                          const triggerRect = event.currentTarget.getBoundingClientRect();
+                          const floatingWidth = 280;
+                          const estimatedHeight = 74;
+                          const viewportPadding = 8;
+                          const placeAbove = triggerRect.top >= estimatedHeight + 12;
+                          const top = placeAbove ? triggerRect.top - estimatedHeight - 8 : triggerRect.bottom + 8;
+                          const left = Math.min(
+                            Math.max(viewportPadding, triggerRect.left - 8),
+                            window.innerWidth - floatingWidth - viewportPadding,
+                          );
+                          setSkipPopover((prev) =>
+                            prev?.entryId === entry.id
+                              ? null
+                              : { entryId: entry.id, top, left, message: buildUserFriendlySkipReason(t, skipReason, "upload") },
+                          );
+                        }}
+                      >
+                        ⚠
+                      </button>
+                    ) : null}
+                    {entry.file ? (
+                      <a
+                        href="#"
+                        className="review-view-link"
+                        title={t("review.openInNewTab")}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          let url = previewCacheRef.current.get(entry.id);
+                          if (!url) {
+                            url = URL.createObjectURL(entry.file);
+                            previewCacheRef.current.set(entry.id, url);
+                          }
+                          window.open(url, "_blank", "noopener,noreferrer");
+                        }}
+                      >
+                        {t("review.table.view")}
+                      </a>
+                    ) : null}
+                    <Button type="button" variant="danger" className="px-2 py-1 text-xs" onClick={() => onRemove(entry.id)}>
+                      {t("common.remove")}
+                    </Button>
+                  </div>
                 </td>
               </tr>
             );
@@ -161,10 +166,11 @@ export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName 
 
 /** @type {Record<string, { className: string; icon: string }>} */
 const STATUS_STYLES = {
-  pending: { className: "text-ledger-smoke", icon: "\u2014" },
+  pending: { className: "text-ledger-smoke", icon: "" },
   queued: { className: "text-ledger-smoke", icon: "\u25CB" },
   processing: { className: "text-blue-600", icon: "\u25D4" },
   extracted: { className: "text-green-600", icon: "\u2713" },
+  skipped: { className: "text-amber-600", icon: "\u26A0" },
   failed: { className: "text-amber-700", icon: "\u26A0" },
 };
 
@@ -180,7 +186,7 @@ function ItemStatusBadge({ status, t }) {
   }
   return (
     <span className={`inline-flex items-center gap-1 text-sm font-medium ${style.className}`}>
-      <span>{style.icon}</span>
+      {style.icon ? <span>{style.icon}</span> : null}
       {t(`upload.queue.itemStatus.${key}`)}
     </span>
   );

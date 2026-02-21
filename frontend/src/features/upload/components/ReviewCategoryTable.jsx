@@ -100,58 +100,60 @@ export function ReviewCategoryTable({ title, description, rows, columns, onChang
                   </td>
                 ))}
                 <td>
-                  {row.skip_reason ? (
-                    <button
-                      type="button"
-                      className="review-skip-icon-btn"
-                      aria-label={t("review.skipReasonAria")}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {row.skip_reason ? (
+                      <button
+                        type="button"
+                        className="review-skip-icon-btn"
+                        aria-label={t("review.skipReasonAria")}
+                        onClick={(event) => {
+                          const triggerRect = event.currentTarget.getBoundingClientRect();
+                          const floatingWidth = 280;
+                          const estimatedHeight = 74;
+                          const viewportPadding = 8;
+                          const placeAbove = triggerRect.top >= estimatedHeight + 12;
+                          const top = placeAbove ? triggerRect.top - estimatedHeight - 8 : triggerRect.bottom + 8;
+                          const left = Math.min(
+                            Math.max(viewportPadding, triggerRect.left - 8),
+                            window.innerWidth - floatingWidth - viewportPadding,
+                          );
+                          setSkipPopover((prev) =>
+                            prev?.rowId === row.id
+                              ? null
+                              : {
+                                  rowId: row.id,
+                                  top,
+                                  left,
+                                  message: buildUserFriendlySkipReason(t, row.skip_reason),
+                                },
+                          );
+                        }}
+                      >
+                        ⚠
+                      </button>
+                    ) : null}
+                    <a
+                      href="#"
+                      className="review-view-link"
+                      title={t("review.openInNewTab")}
                       onClick={(event) => {
-                        const triggerRect = event.currentTarget.getBoundingClientRect();
-                        const floatingWidth = 280;
-                        const estimatedHeight = 74;
-                        const viewportPadding = 8;
-                        const placeAbove = triggerRect.top >= estimatedHeight + 12;
-                        const top = placeAbove ? triggerRect.top - estimatedHeight - 8 : triggerRect.bottom + 8;
-                        const left = Math.min(
-                          Math.max(viewportPadding, triggerRect.left - 8),
-                          window.innerWidth - floatingWidth - viewportPadding,
-                        );
-                        setSkipPopover((prev) =>
-                          prev?.rowId === row.id
-                            ? null
-                            : {
-                                rowId: row.id,
-                                top,
-                                left,
-                                message: buildUserFriendlySkipReason(t, row.skip_reason),
-                              },
-                        );
+                        event.preventDefault();
+                        onViewRow?.(row);
                       }}
                     >
-                      ⚠
-                    </button>
-                  ) : null}
-                  <a
-                    href="#"
-                    className="review-view-link"
-                    title={t("review.openInNewTab")}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      onViewRow?.(row);
-                    }}
-                  >
-                    {t("review.table.view")}
-                  </a>
-                  {onRemoveRow ? (
-                    <Button
-                      type="button"
-                      variant="danger"
-                      className="px-2 py-1 text-xs"
-                      onClick={() => onRemoveRow(row.id)}
-                    >
-                      {t("common.remove")}
-                    </Button>
-                  ) : null}
+                      {t("review.table.view")}
+                    </a>
+                    {onRemoveRow ? (
+                      <Button
+                        type="button"
+                        variant="danger"
+                        className="px-2 py-1 text-xs"
+                        onClick={() => onRemoveRow(row.id)}
+                      >
+                        {t("common.remove")}
+                      </Button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ))}

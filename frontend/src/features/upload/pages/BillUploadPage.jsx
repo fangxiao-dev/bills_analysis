@@ -47,12 +47,22 @@ export function BillUploadPage() {
   })();
 
   // Fetch review rows when batch is ready so upload page can show skip_reason warnings.
+  // Guard against re-fetch if already loading or loaded; re-triggers if BATCH_UPDATED resets reviewRows.
   useEffect(() => {
     if (!state.batch?.batch_id || state.batch.status !== "review_ready") {
       return;
     }
+    if (state.reviewRowsLoading || state.reviewRows.length > 0) {
+      return;
+    }
     void actions.fetchReviewRows();
-  }, [actions.fetchReviewRows, state.batch?.batch_id, state.batch?.status]);
+  }, [
+    actions.fetchReviewRows,
+    state.batch?.batch_id,
+    state.batch?.status,
+    state.reviewRows.length,
+    state.reviewRowsLoading,
+  ]);
 
   // Build filename → skip_reason lookup from review rows for FileQueuePanel warnings.
   const skipReasonByName = useMemo(() => {
