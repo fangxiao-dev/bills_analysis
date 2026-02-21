@@ -14,3 +14,4 @@
 | TC-008 | office场景需要支持地址识别以及校对 | DONE | 20260218-TC-008 | 2026-02-18T22:49:58+01:00 | office receiver/address semantic validation completed |
 | TC-100 | M2 Docker单容器化：将FastAPI后端+React前端打包为单容器镜像，客户一键启动试用 | DONE | 20260218-2106 | 2026-02-18T21:59:17+01:00 |  |
 | TC-101 | Office type错误样本收集：在review页面添加"Report Type Error"按钮，一键将batch中间结果复制到dataset目录，供开发者改进GPT-4o-mini分类prompt | PLANNED | 20260221-TC-101 | 2026-02-21T10:09:25+01:00 |  |
+| TC-102 | 上传解析改为单文件实时状态跟踪：单文件超时/报错独立失败；取消batch级timeout；仅全失败或batch级异常才标记batch失败 | PLANNED | 20260221-TC-102 | 2026-02-21T14:38:10+01:00 | TC-102 per-file status tracking, file-level timeout/failure semantics |
