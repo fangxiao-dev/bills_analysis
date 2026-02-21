@@ -140,6 +140,23 @@ class BatchReviewRowsResponse(StrictModel):
     rows: list[BatchReviewRow] = Field(default_factory=list)
 
 
+class ReportTypeCorrection(StrictModel):
+    """One office type correction captured from model-vs-review comparison."""
+
+    row_id: str
+    filename: str
+    original_type: str
+    corrected_type: str
+
+
+class ReportErrorResponse(StrictModel):
+    """Response envelope returned after reporting office type errors."""
+
+    schema_version: Literal["v1"] = SCHEMA_VERSION
+    status: Literal["reported", "skipped"]
+    corrections: list[ReportTypeCorrection] = Field(default_factory=list)
+
+
 class MergeSourceLocalResponse(StrictModel):
     """Response returned after local monthly Excel source upload."""
 

@@ -26,6 +26,7 @@ import {
  *    }) => Promise<{ batch_id: string }>;
  *    getReviewRows?: (batchId: string) => Promise<{ rows: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>;
  *    uploadMergeSourceLocal?: (batchId: string, file: File) => Promise<{ monthly_excel_path: string }>;
+ *    reportTypeError?: (batchId: string) => Promise<{ status: "reported" | "skipped"; corrections: Array<Record<string, unknown>> }>;
  *  };
  * }} params
  */
@@ -383,6 +384,33 @@ export function useUploadFlow({ client }) {
   );
 
   /**
+   * Report office type mismatch samples for current reviewed batch.
+   * @param {string | null | undefined} [batchIdOverride]
+   */
+  const reportTypeError = useCallback(async (batchIdOverride) => {
+    const current = stateRef.current;
+    const batchId = batchIdOverride || current.batch?.batch_id;
+    if (!batchId) {
+      dispatch({ type: "SET_SYSTEM_ERROR", message: "Batch id is missing." });
+      return null;
+    }
+    if (typeof client.reportTypeError !== "function") {
+      dispatch({ type: "SET_SYSTEM_ERROR", message: "Report type error endpoint is unavailable." });
+      return null;
+    }
+
+    try {
+      const payload = await client.reportTypeError(batchId);
+      dispatch({ type: "REPORT_TYPE_ERROR_SUCCESS", payload });
+      dispatch({ type: "SET_SYSTEM_ERROR", message: "" });
+      return payload;
+    } catch (error) {
+      dispatch({ type: "SET_SYSTEM_ERROR", message: toErrorMessage(error) });
+      return null;
+    }
+  }, [client]);
+
+  /**
    * Retry merge using last merge payload, only when batch failed.
    */
   const retryMerge = useCallback(async () => {
@@ -453,6 +481,7 @@ export function useUploadFlow({ client }) {
       queueMergeOnly,
       fetchReviewRows,
       resolveMonthlyPathFromLocal,
+      reportTypeError,
       retryMerge,
       retryPolling,
     },

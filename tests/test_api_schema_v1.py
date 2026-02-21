@@ -370,6 +370,88 @@ def test_submit_review_canonical_shape_persisted_to_review_artifacts() -> None:
         assert submitted_rows[0]["result"]["brutto"] == "12.30"
 
 
+def test_report_error_endpoint_copies_batch_artifacts_and_returns_type_corrections() -> None:
+    """Report-error endpoint should snapshot artifacts and return office type correction diffs."""
+
+    TestClient, app = _get_test_client_and_app()
+    with TestClient(app) as client:
+        create_res = client.post(
+            "/v1/batches",
+            json={
+                "type": "office",
+                "run_date": "04/02/2026",
+                "inputs": [{"path": "a.pdf", "category": "office"}],
+                "metadata": {},
+            },
+        )
+        assert create_res.status_code == 200
+        batch_id = create_res.json()["batch_id"]
+
+        batch_out = Path("outputs") / "webapp" / batch_id
+        batch_out.mkdir(parents=True, exist_ok=True)
+        results_path = batch_out / "results.json"
+        results_path.write_text(
+            json.dumps(
+                {
+                    "batch_id": batch_id,
+                    "batch_type": "office",
+                    "items": [
+                        {
+                            "row_id": "row-0001",
+                            "filename": "a.pdf",
+                            "category": "office",
+                            "result": {"type": "Service&Andere"},
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        di_dir = batch_out / "di_fields"
+        di_dir.mkdir(parents=True, exist_ok=True)
+        (di_dir / "row-0001.json").write_text(
+            json.dumps({"invoice_no": "A-100"}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        review_res = client.put(
+            f"/v1/batches/{batch_id}/review",
+            json={
+                "rows": [
+                    {
+                        "row_id": "row-0001",
+                        "filename": "a.pdf",
+                        "category": "office",
+                        "result": {"type": "Miete"},
+                        "score": {},
+                    }
+                ]
+            },
+        )
+        assert review_res.status_code == 200
+
+        report_res = client.post(f"/v1/batches/{batch_id}/report-error")
+        assert report_res.status_code == 200
+        body = report_res.json()
+        assert body["schema_version"] == "v1"
+        assert body["status"] == "reported"
+        assert len(body["corrections"]) == 1
+        assert body["corrections"][0]["row_id"] == "row-0001"
+        assert body["corrections"][0]["original_type"] == "Service&Andere"
+        assert body["corrections"][0]["corrected_type"] == "Miete"
+
+        dataset_dir = Path("dataset") / "type_errors" / batch_id
+        assert (dataset_dir / "results.json").exists()
+        assert (dataset_dir / "review_rows_submitted.json").exists()
+        assert (dataset_dir / "di_fields" / "row-0001.json").exists()
+        summary_path = dataset_dir / "correction_summary.json"
+        assert summary_path.exists()
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        assert summary["corrections"][0]["corrected_type"] == "Miete"
+
+
 def test_review_rows_not_found_returns_404() -> None:
     """Review rows route should return 404 for unknown batch id."""
 
@@ -660,6 +742,75 @@ def test_local_backend_calls_preprocess_and_extract(monkeypatch: pytest.MonkeyPa
     assert Path(artifacts["artifacts"]["result_json_path"]).exists()
     assert Path(artifacts["artifacts"]["review_json_path"]).exists()
     assert len(artifacts["review_rows"]) == 1
+
+
+def test_local_backend_persists_office_di_fields_artifact(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Office processing should persist cleaned DI fields by row id for prompt tuning datasets."""
+
+    def fake_compress(pdf_path: Path, *, dest_dir: Path, dpi: int, name_suffix: str) -> Path:
+        """Stub compression helper returning a deterministic archive path."""
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        archived = dest_dir / f"{pdf_path.stem}_{name_suffix}.pdf"
+        archived.write_bytes(b"%PDF-1.4\narchived\n%%EOF")
+        return archived
+
+    def fake_analyze(pdf_path: Path, *, model_id: str, return_fields: bool) -> Any:
+        """Stub extraction helper returning office fields payload."""
+
+        payload = {
+            "brutto": 123.45,
+            "netto": 100.0,
+            "invoice_id": "INV-001",
+            "confidence_brutto": 0.95,
+            "confidence_netto": 0.91,
+            "confidence_invoice_id": 0.87,
+        }
+        office_fields = {"raw_invoice_no": "INV-RAW-001"}
+        if return_fields:
+            return payload, office_fields
+        return payload
+
+    def fake_clean(fields_payload: dict[str, Any]) -> dict[str, Any]:
+        """Stub clean adapter returning deterministic distilled DI dict."""
+
+        return {"invoice_no": fields_payload.get("raw_invoice_no")}
+
+    def fake_semantics(distilled_fields: dict[str, Any]) -> dict[str, Any]:
+        """Stub semantic adapter returning office type/sender info."""
+
+        return {
+            "purpose": "Service&Andere",
+            "sender": "Vendor A",
+            "receiver": "Ramen Ippin Dortmund GmbH",
+            "receiver_address": "Reinoldistr.8 44135 Dortmund",
+            "distilled_echo": distilled_fields,
+        }
+
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._compress_pdf_for_archive", fake_compress)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._analyze_pdf_with_azure", fake_analyze)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._clean_invoice_fields", fake_clean)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._extract_office_semantics", fake_semantics)
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    src_pdf = test_root / "office_input.pdf"
+    src_pdf.write_bytes(b"%PDF-1.4\nsource\n%%EOF")
+    req = CreateBatchRequest(
+        type="office",
+        run_date="04/02/2026",
+        inputs=[{"path": str(src_pdf), "category": "office"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    asyncio.run(backend.process_batch(batch))
+
+    di_fields_path = backend.root / batch.batch_id / "di_fields" / "row-0001.json"
+    assert di_fields_path.exists()
+    saved = json.loads(di_fields_path.read_text(encoding="utf-8"))
+    assert saved["invoice_no"] == "INV-RAW-001"
 
 
 def test_local_backend_process_batch_raises_on_extract_failure(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -291,4 +291,91 @@ describe("useUploadFlow", () => {
     expect(result.current.state.batch?.batch_id).toBe("b-recovered");
     expect(result.current.state.phase).toBe("tracking");
   });
+
+  it("reports office type error for current batch via client action", async () => {
+    const client = createMockUploadClient({ latencyMs: 0 });
+    client.reportTypeError = vi.fn(async () => ({
+      status: "reported",
+      corrections: [
+        {
+          row_id: "row-0001",
+          filename: "office.pdf",
+          original_type: "Service&Andere",
+          corrected_type: "Miete",
+        },
+      ],
+    }));
+
+    const { result } = renderHook(() => useUploadFlow({ client }));
+    act(() => {
+      result.current.actions.setBatchType("office");
+      result.current.actions.addFiles([new File(["office"], "office.pdf", { type: "application/pdf" })], "office");
+    });
+    await act(async () => {
+      await result.current.actions.submitBatch();
+    });
+
+    await waitFor(() => {
+      expect(result.current.state.batch?.batch_id).toBeTruthy();
+    });
+
+    let payload;
+    await act(async () => {
+      payload = await result.current.actions.reportTypeError();
+    });
+    expect(payload.status).toBe("reported");
+    expect(payload.corrections).toHaveLength(1);
+    expect(client.reportTypeError).toHaveBeenCalledWith(result.current.state.batch.batch_id);
+  });
+
+  it("consumes report action after reported and resets after re-submit", async () => {
+    const client = createMockUploadClient({ latencyMs: 0 });
+    client.reportTypeError = vi.fn(async () => ({
+      status: "reported",
+      corrections: [{ row_id: "row-0001", filename: "office.pdf", original_type: "A", corrected_type: "B" }],
+    }));
+
+    const { result } = renderHook(() => useUploadFlow({ client }));
+    act(() => {
+      result.current.actions.setBatchType("office");
+      result.current.actions.addFiles([new File(["office"], "office.pdf", { type: "application/pdf" })], "office");
+    });
+    await act(async () => {
+      await result.current.actions.submitBatch();
+    });
+    await waitFor(() => {
+      expect(result.current.state.batch?.batch_id).toBeTruthy();
+    });
+
+    await act(async () => {
+      await result.current.actions.submitReviewOnly([
+        {
+          row_id: "office:office.pdf:0",
+          category: "office",
+          filename: "office.pdf",
+          result: { type: "A", brutto: "1" },
+          score: {},
+        },
+      ]);
+    });
+    expect(result.current.state.reportTypeErrorConsumed).toBe(false);
+
+    await act(async () => {
+      await result.current.actions.reportTypeError();
+    });
+    expect(result.current.state.reportTypeErrorConsumed).toBe(true);
+
+    await act(async () => {
+      await result.current.actions.submitReviewOnly([
+        {
+          row_id: "office:office.pdf:0",
+          category: "office",
+          filename: "office.pdf",
+          result: { type: "B", brutto: "1" },
+          score: {},
+        },
+      ]);
+    });
+    expect(result.current.state.reportTypeErrorConsumed).toBe(false);
+  });
 });

@@ -182,6 +182,23 @@ export function createMockUploadClient(options = {}) {
       await wait(latencyMs);
       return { monthly_excel_path: `mock://merge-source/${safeName(file.name)}` };
     },
+
+    /**
+     * Simulate report-error action in frontend-only mode.
+     * @param {string} batchId
+     */
+    async reportTypeError(batchId) {
+      await wait(latencyMs);
+      const record = store.get(batchId);
+      if (!record) {
+        throw new Error(`Batch ${batchId} not found in mock store.`);
+      }
+      return {
+        schema_version: "v1",
+        status: "skipped",
+        corrections: [],
+      };
+    },
   };
 }
 

@@ -27,6 +27,7 @@ data/**
 
 # ignore
 outputs/*
+dataset/*
 data/samples/*
 
 # SKILLS

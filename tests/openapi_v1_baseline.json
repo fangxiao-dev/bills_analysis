@@ -365,6 +365,46 @@
         "summary": "Upload Local Merge Source"
       }
     },
+    "/v1/batches/{batch_id}/report-error": {
+      "post": {
+        "description": "Report reviewed office type corrections and snapshot related batch artifacts.",
+        "operationId": "report_type_error_v1_batches__batch_id__report_error_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportErrorResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Type Error"
+      }
+    },
     "/v1/batches/{batch_id}/review": {
       "put": {
         "description": "Store human-reviewed rows for a batch.",
@@ -1037,6 +1077,68 @@
         "created_at"
       ],
       "title": "MergeTaskResponse",
+      "type": "object"
+    },
+    "ReportErrorResponse": {
+      "additionalProperties": false,
+      "description": "Response envelope returned after reporting office type errors.",
+      "properties": {
+        "corrections": {
+          "items": {
+            "$ref": "#/components/schemas/ReportTypeCorrection"
+          },
+          "title": "Corrections",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "v1",
+          "default": "v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "reported",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ReportErrorResponse",
+      "type": "object"
+    },
+    "ReportTypeCorrection": {
+      "additionalProperties": false,
+      "description": "One office type correction captured from model-vs-review comparison.",
+      "properties": {
+        "corrected_type": {
+          "title": "Corrected Type",
+          "type": "string"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "original_type": {
+          "title": "Original Type",
+          "type": "string"
+        },
+        "row_id": {
+          "title": "Row Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "row_id",
+        "filename",
+        "original_type",
+        "corrected_type"
+      ],
+      "title": "ReportTypeCorrection",
       "type": "object"
     },
     "SubmitReviewRequest": {
