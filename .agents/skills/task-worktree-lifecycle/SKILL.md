@@ -1,25 +1,20 @@
 ---
 name: task-worktree-lifecycle
-version: "1.0.0"
-description: End-to-end task worktree lifecycle for WT-PM (create/sync/init/regression/merge).
-user-invocable: true
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
-  - Glob
-  - Grep
+description: Full task lifecycle from plan commit to post-merge verification (WT-PM). Covers plan artifact commit on trunk, worktree creation and environment init, development, regression gate, merge, and manual smoke test.
+user-invokable: true
 ---
 
 # Task Worktree Lifecycle (WT-PM)
 
-Operational skill for the full task branch lifecycle in this repo:
+Operational skill for the full task lifecycle in this repo, from planning artifact commit through post-merge verification:
+
+0) commit plan artifacts to trunk (pre-worktree),
 1) create task worktree + sync shared config,
 2) initialize backend and frontend environments,
 3) sync latest mature trunk (`dev`) + run regression gate,
 4) update planning artifacts (`plans/workplans/*` + `plans/todo_current.md`),
-5) merge task branch back into `dev`.
+5) merge task branch back into `dev`,
+6) post-merge manual smoke test.
 
 This skill is execution-oriented. For read-only cross-branch inspection, use `cross-worktree-sync`.
 
@@ -29,6 +24,8 @@ This skill is execution-oriented. For read-only cross-branch inspection, use `cr
 - `创建task worktree并初始化`
 - `task完成后回归并合并`
 - `wt-pm lifecycle`
+- `规划完成后继续开发流程`
+- `从plan落盘开始到合并`
 
 ## Runtime parameters
 
@@ -59,6 +56,39 @@ Path policy:
 - Never continue to Phase 4 unless all required regression checks pass.
 - Never continue to Phase 5 unless plan/progress/todo updates are complete.
 - If dirty-tree risk is detected at a critical step, stop and request user confirmation.
+
+## Phase 0: Commit planning artifacts to trunk (required before worktree creation)
+
+Goal: persist task plan files and status to trunk so the worktree starts with a
+complete planning snapshot and the commit has its own audit node.
+
+Pre-conditions (must all be true before running this phase):
+
+- Agent is currently on trunk (`dev` by default).
+- Task entry exists in `plans/todo_current.md` with `status=PLANNED` and a bound `plan_id`.
+- Three plan files exist under `plans/workplans/`:
+  - `task_plan.<plan_id>.md`
+  - `findings.<plan_id>.md`
+  - `progress.<plan_id>.md`
+
+Commands:
+
+```bash
+git add plans/todo_current.md \
+        plans/workplans/task_plan.<plan_id>.md \
+        plans/workplans/findings.<plan_id>.md \
+        plans/workplans/progress.<plan_id>.md
+git commit -m "<task_id>: add planning docs for <slug>"
+```
+
+Behavior:
+
+- If any of the four files is missing or unstaged, stop and list the missing files.
+- Only stage those four paths; do not include unrelated changes.
+- After a successful commit, proceed to Preflight checks and Phase 1.
+- If the user confirms plan files were already committed in a prior session, skip this phase.
+
+---
 
 ## Preflight checks (must pass before Phase 1)
 
@@ -278,6 +308,27 @@ Output requirement:
 
 - Use `cross-worktree-sync` only for read-only cross-branch inspection.
 - Use `task-worktree-lifecycle` for operational lifecycle (create/init/sync/regression/merge).
+
+## Phase 6: Post-merge manual verification (recommended)
+
+Goal: confirm the feature works end-to-end in the integrated trunk codebase after
+the automated regression gate has passed.
+
+Steps:
+
+1. Start the application on trunk: `uv run invoice-web-api` (or `docker compose up` for M2+).
+2. Walk through the core user flow relevant to this task (e.g., upload → extract → review → merge).
+3. Spot-check adjacent features for regressions not caught by automated tests.
+4. Record the outcome in `plans/workplans/progress.<plan_id>.md` (✅ passed / ❌ blocked with details).
+
+Behavior:
+
+- This phase is **recommended, not gated**: it does not block worktree cleanup or task `DONE` status.
+- If a regression is found: reopen the task branch, fix, re-run Phases 3–5, then retest.
+- Worktree cleanup (`git worktree remove`) may proceed independently of this phase if the
+  tester is already confident from the automated regression gate.
+
+---
 
 ## Acceptance checklist
 
