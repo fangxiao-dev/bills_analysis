@@ -48,6 +48,7 @@ function buildBaseContext() {
       fetchReviewRows: vi.fn(async () => []),
       resolveMonthlyPathFromLocal: vi.fn(async () => "D:\\merge\\monthly.xlsx"),
       retryMerge: vi.fn(async () => true),
+      reportTypeError: vi.fn(async () => ({ status: "skipped", corrections: [] })),
     },
     state: {
       files: [{ id: "f1", name: "a.pdf", category: "bar" }],
@@ -61,6 +62,7 @@ function buildBaseContext() {
         merge_output: {},
       },
       reviewSubmitted: false,
+      reportTypeErrorConsumed: false,
       mergeRequestPayload: { mode: "overwrite", monthly_excel_path: null },
       mergeTask: null,
       lastMergeTaskId: null,
@@ -184,6 +186,111 @@ describe("ManualReviewPage", () => {
     expect(screen.getByRole("button", { name: "Retry Merge" })).toBeInTheDocument();
   });
 
+  it("renders report type error button for office batch but keeps it disabled before current submit", () => {
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        batch: {
+          ...buildBaseContext().state.batch,
+          type: "office",
+          review_rows_count: 1,
+        },
+        reviewSubmitted: true,
+      },
+    });
+    const reportButton = screen.getByRole("button", { name: "Report Type Error" });
+    expect(reportButton).toBeInTheDocument();
+    expect(reportButton).toBeDisabled();
+  });
+
+  it("keeps report type error button invalid before review submit", () => {
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        batch: {
+          ...buildBaseContext().state.batch,
+          type: "office",
+          review_rows_count: 1,
+        },
+        reviewSubmitted: false,
+      },
+    });
+    expect(screen.getByRole("button", { name: "Report Type Error" })).toBeDisabled();
+  });
+
+  it("keeps submit enabled for merged batch to allow re-submit", () => {
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        batch: {
+          ...buildBaseContext().state.batch,
+          status: "merged",
+        },
+      },
+    });
+    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+  });
+
+  it("reports type correction and renders feedback banner", async () => {
+    const actions = {
+      submitReviewOnly: vi.fn(async () => true),
+      queueMergeOnly: vi.fn(async () => true),
+      fetchReviewRows: vi.fn(async () => []),
+      resolveMonthlyPathFromLocal: vi.fn(async () => "D:\\merge\\monthly.xlsx"),
+      retryMerge: vi.fn(async () => true),
+      reportTypeError: vi.fn(async () => ({
+        status: "reported",
+        corrections: [
+          {
+            row_id: "row-0001",
+            filename: "office.pdf",
+            original_type: "Service&Andere",
+            corrected_type: "Miete",
+          },
+        ],
+      })),
+    };
+
+    renderPage({
+      actions,
+      state: {
+        ...buildBaseContext().state,
+        batch: {
+          ...buildBaseContext().state.batch,
+          type: "office",
+          review_rows_count: 1,
+        },
+        reviewSubmitted: true,
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => {
+      expect(actions.submitReviewOnly).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Report Type Error" }));
+    await waitFor(() => {
+      expect(actions.reportTypeError).toHaveBeenCalledWith("b1");
+    });
+    expect(screen.getByText("Reported 1 type correction(s).")).toBeInTheDocument();
+  });
+
+  it("keeps report type error invalid after one successful report", () => {
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        batch: {
+          ...buildBaseContext().state.batch,
+          type: "office",
+          review_rows_count: 1,
+        },
+        reportTypeErrorConsumed: true,
+      },
+    });
+    expect(screen.getByRole("button", { name: "Report Type Error" })).toBeDisabled();
+  });
+
   it("forces overwrite only for daily mode", () => {
     renderPage({
       state: {
@@ -240,6 +347,7 @@ describe("ManualReviewPage", () => {
       fetchReviewRows: vi.fn(async () => []),
       resolveMonthlyPathFromLocal: vi.fn(async () => "D:\\merge\\monthly.xlsx"),
       retryMerge: vi.fn(async () => true),
+      reportTypeError: vi.fn(async () => ({ status: "skipped", corrections: [] })),
     };
 
     renderPage({ actions });
@@ -252,6 +360,29 @@ describe("ManualReviewPage", () => {
         metadata: {},
       });
     });
+  });
+
+  it("shows repeat submit hint after submit succeeds", async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(await screen.findByText(/You can submit again to regenerate reviewed\.json/i)).toBeInTheDocument();
+  });
+
+  it("shows one combined done hint instead of two separate hints", async () => {
+    renderPage({
+      flags: { isBusy: false, isDone: true },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(await screen.findByText(/Review complete, merge succeeded/i)).toBeInTheDocument();
+    expect(screen.queryByText(/You can submit again to regenerate reviewed\.json/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Merge finished. Workflow reached done state.")).not.toBeInTheDocument();
+  });
+
+  it("keeps local excel label text outside clickable label container", () => {
+    renderPage();
+    expect(screen.getByText("Choose Local Excel").closest("label")).toBeNull();
+    expect(screen.getByRole("button", { name: "Choose File" })).toBeInTheDocument();
+    expect(screen.getByText("No file selected")).toBeInTheDocument();
   });
 
   it("renders backend validation message from systemError", () => {
@@ -303,6 +434,7 @@ describe("ManualReviewPage", () => {
       fetchReviewRows: vi.fn(async () => []),
       resolveMonthlyPathFromLocal: vi.fn(async () => "D:\\merge\\monthly.xlsx"),
       retryMerge: vi.fn(async () => true),
+      reportTypeError: vi.fn(async () => ({ status: "skipped", corrections: [] })),
     };
 
     renderPage({

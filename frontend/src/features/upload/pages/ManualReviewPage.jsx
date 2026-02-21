@@ -81,7 +81,13 @@ export function ManualReviewPage() {
   const [larkSheetLink, setLarkSheetLink] = useState("");
   const [mergeMode, setMergeMode] = useState("overwrite");
   const [monthlyPath, setMonthlyPath] = useState(state.mergeRequestPayload?.monthly_excel_path || DEFAULT_MONTHLY_EXCEL_PATH);
+  const [reportingError, setReportingError] = useState(false);
+  const [reportFeedback, setReportFeedback] = useState("");
+  const [submitFeedback, setSubmitFeedback] = useState("");
+  const [reportTypeErrorArmed, setReportTypeErrorArmed] = useState(false);
   const previewUrlCacheRef = useRef(new Map());
+  const reportFeedbackTimerRef = useRef(null);
+  const localExcelInputRef = useRef(null);
 
   useEffect(() => {
     setDraft((previous) => {
@@ -98,12 +104,20 @@ export function ManualReviewPage() {
     setMonthlyPath(state.mergeRequestPayload?.monthly_excel_path || DEFAULT_MONTHLY_EXCEL_PATH);
   }, [effectiveBatchType, state.mergeRequestPayload?.mode, state.mergeRequestPayload?.monthly_excel_path]);
 
+  useEffect(() => {
+    setReportTypeErrorArmed(false);
+  }, [state.batch?.batch_id]);
+
   useEffect(
     () => () => {
       for (const objectUrl of previewUrlCacheRef.current.values()) {
         URL.revokeObjectURL(objectUrl);
       }
       previewUrlCacheRef.current.clear();
+      if (reportFeedbackTimerRef.current) {
+        clearTimeout(reportFeedbackTimerRef.current);
+        reportFeedbackTimerRef.current = null;
+      }
     },
     [],
   );
@@ -129,12 +143,16 @@ export function ManualReviewPage() {
 
   const hasBatch = Boolean(state.batch?.batch_id);
   const hasSubmittedReview = state.reviewSubmitted || (state.batch?.review_rows_count || 0) > 0;
+  const canReportTypeError = effectiveBatchType === "office" && reportTypeErrorArmed && hasBatch && !state.reportTypeErrorConsumed;
+  const shouldRenderReportTypeErrorButton = effectiveBatchType === "office" && hasBatch;
+  const reportTypeErrorDisabled = !canReportTypeError || reportingError || flags.isBusy;
   const hasMergeSource = monthlyPathSource === SOURCE_LOCAL_FILE ? true : Boolean(larkSheetLink.trim() || monthlyPath.trim());
-  const submitDisabled = !hasBatch || state.batch?.status !== "review_ready" || flags.isBusy || !totalRows || !hasMergeSource;
+  const submitDisabled = !hasBatch || flags.isBusy || !totalRows || !hasMergeSource;
   const showRetryMerge = state.batch?.status === "failed" && hasSubmittedReview;
 
   const onSubmit = useCallback(async () => {
     setLocalError("");
+    setSubmitFeedback("");
 
     if (monthlyPathSource === SOURCE_LARK_SHEET && !isValidHttpUrl(larkSheetLink)) {
       setLocalError(t("review.invalidLarkUrl"));
@@ -152,6 +170,8 @@ export function ManualReviewPage() {
       setLocalError(t("review.submitFailed"));
       return;
     }
+    setReportTypeErrorArmed(true);
+    setSubmitFeedback(t("review.submitRepeatHint"));
 
     let resolvedMonthlyPath = monthlyPathSource === SOURCE_LOCAL_FILE && !selectedLocalFile ? "" : monthlyPath.trim();
     if (monthlyPathSource === SOURCE_LOCAL_FILE && selectedLocalFile) {
@@ -182,6 +202,37 @@ export function ManualReviewPage() {
     }
   }, [actions, t]);
 
+  const onReportTypeError = useCallback(async () => {
+    if (reportingError) {
+      return;
+    }
+    setLocalError("");
+    setReportFeedback("");
+    setReportingError(true);
+
+    const payload = await actions.reportTypeError(state.batch?.batch_id);
+    if (!payload) {
+      setLocalError(t("review.reportError.failed"));
+      setReportingError(false);
+      return;
+    }
+    setReportTypeErrorArmed(false);
+
+    if (payload.status === "reported") {
+      setReportFeedback(t("review.reportError.reported", { count: payload.corrections?.length || 0 }));
+    } else {
+      setReportFeedback(t("review.reportError.skipped"));
+    }
+    if (reportFeedbackTimerRef.current) {
+      clearTimeout(reportFeedbackTimerRef.current);
+    }
+    reportFeedbackTimerRef.current = setTimeout(() => {
+      setReportFeedback("");
+      reportFeedbackTimerRef.current = null;
+    }, 4000);
+    setReportingError(false);
+  }, [actions, reportingError, state.batch?.batch_id, t]);
+
   const onOpenMergedResult = useCallback(async () => {
     setLocalError("");
 
@@ -209,6 +260,10 @@ export function ManualReviewPage() {
       setMonthlyPath(resolvedPath);
     }
   }, [actions]);
+
+  const onTriggerLocalExcelPicker = useCallback(() => {
+    localExcelInputRef.current?.click();
+  }, []);
 
   const onViewRow = useCallback(
     (row) => {
@@ -272,8 +327,8 @@ export function ManualReviewPage() {
 
       <section className="ledger-shell space-y-4">
         {!state.batch ? <AlertBanner tone="error" message={t("review.noBatch")} /> : null}
-        {state.batch && state.batch.status !== "review_ready" ? (
-          <AlertBanner message={t("review.onlyReviewReady", { status: state.batch.status })} />
+        {state.batch && flags.isBusy ? (
+          <AlertBanner message={t("review.submitBlockedWhileProcessing", { status: state.batch.status })} />
         ) : null}
         {state.reviewRowsLoading ? <AlertBanner message={t("review.loadingRows")} /> : null}
 
@@ -356,11 +411,24 @@ export function ManualReviewPage() {
 
           {monthlyPathSource === SOURCE_LOCAL_FILE ? (
             <div className="mt-3">
-              <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
+              <div className="flex flex-col gap-1 text-sm text-ledger-smoke">
                 <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.chooseLocalExcel")}</span>
-                <input type="file" accept=".xlsx,.xls" onChange={onSelectLocalExcel} />
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="ghost" onClick={onTriggerLocalExcelPicker}>
+                    {t("review.chooseFile")}
+                  </Button>
+                  <span className="text-sm text-ledger-smoke">{selectedLocalFileName || t("review.noFileSelected")}</span>
+                </div>
+                <input
+                  ref={localExcelInputRef}
+                  type="file"
+                  aria-label={t("review.chooseLocalExcel")}
+                  accept=".xlsx,.xls"
+                  onChange={onSelectLocalExcel}
+                  className="sr-only"
+                />
                 {selectedLocalFileName ? <span className="text-xs text-ledger-smoke">{t("review.selectedFile", { name: selectedLocalFileName })}</span> : null}
-              </label>
+              </div>
             </div>
           ) : null}
 
@@ -384,6 +452,11 @@ export function ManualReviewPage() {
             <Button type="button" variant="primary" onClick={() => void onSubmit()} disabled={submitDisabled}>
               {t("common.submit")}
             </Button>
+            {shouldRenderReportTypeErrorButton ? (
+              <Button type="button" variant="danger" onClick={() => void onReportTypeError()} disabled={reportTypeErrorDisabled}>
+                {reportingError ? t("review.reportError.reporting") : t("review.reportError.action")}
+              </Button>
+            ) : null}
             {state.batch?.status === "merged" ? (
               <Button
                 type="button"
@@ -405,8 +478,9 @@ export function ManualReviewPage() {
         </section>
 
         {localError ? <AlertBanner tone="error" message={localError} /> : null}
+        {flags.isDone ? <AlertBanner message={t("review.doneAndResubmitHint")} /> : submitFeedback ? <AlertBanner message={submitFeedback} /> : null}
+        {reportFeedback ? <AlertBanner message={reportFeedback} /> : null}
         {state.systemError ? <AlertBanner tone="error" message={state.systemError} /> : null}
-        {flags.isDone ? <AlertBanner message={t("upload.doneHint")} /> : null}
       </section>
     </AppFrame>
   );
