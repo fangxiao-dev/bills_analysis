@@ -100,6 +100,7 @@ _DI_CLIENT: DocumentIntelligenceClient | None = None
 _AOAI_CLIENT: AzureOpenAI | None = None
 OFFICE_PURPOSE_JFC = "JFC"
 OFFICE_PURPOSE_RAMEN_EUROPA = "Ramenlppin Europa"
+OFFICE_PURPOSE_REINIGUNG = "Reinigung"
 OFFICE_PURPOSE_FALLBACK = "Service&Andere"
 
 
@@ -418,6 +419,7 @@ def normalize_office_purpose(
     jfc_hit = bool(re.search(r"\bjfc\b", full_text, flags=re.IGNORECASE))
     ramen_hit = bool(re.search(r"ram[ae]n\s*[il1]ppin", vendor_side_text, flags=re.IGNORECASE))
     europa_hit = "europa" in vendor_side_text
+    reinigung_hit = bool(re.search(r"reinigung", vendor_side_text, flags=re.IGNORECASE))
     llm_is_ramen_europa = _is_ramen_europa_label(llm_purpose)
 
     if jfc_hit:
@@ -427,6 +429,7 @@ def normalize_office_purpose(
             "jfc_hit": jfc_hit,
             "ramen_hit": ramen_hit,
             "europa_hit": europa_hit,
+            "reinigung_hit": reinigung_hit,
         }
     if ramen_hit and europa_hit:
         return OFFICE_PURPOSE_RAMEN_EUROPA, {
@@ -435,6 +438,7 @@ def normalize_office_purpose(
             "jfc_hit": jfc_hit,
             "ramen_hit": ramen_hit,
             "europa_hit": europa_hit,
+            "reinigung_hit": reinigung_hit,
         }
     if llm_is_ramen_europa and not (ramen_hit and europa_hit):
         return OFFICE_PURPOSE_FALLBACK, {
@@ -443,6 +447,16 @@ def normalize_office_purpose(
             "jfc_hit": jfc_hit,
             "ramen_hit": ramen_hit,
             "europa_hit": europa_hit,
+            "reinigung_hit": reinigung_hit,
+        }
+    if reinigung_hit:
+        return OFFICE_PURPOSE_REINIGUNG, {
+            "guardrail_hit": True,
+            "reason": "reinigung_vendor_evidence",
+            "jfc_hit": jfc_hit,
+            "ramen_hit": ramen_hit,
+            "europa_hit": europa_hit,
+            "reinigung_hit": reinigung_hit,
         }
 
     return llm_purpose, {
@@ -451,6 +465,7 @@ def normalize_office_purpose(
         "jfc_hit": jfc_hit,
         "ramen_hit": ramen_hit,
         "europa_hit": europa_hit,
+        "reinigung_hit": reinigung_hit,
     }
 
 
@@ -508,9 +523,10 @@ def extract_office_invoice_azure(distilled_data: dict):
         - **Personalkosten**
         - **Gerät&Geschirr**
         - **Reparatur**
+        - **Reinigung**: Cleaning services — window cleaning, building/facility cleaning, glass cleaning (e.g. "Gebäudereinigung", "Glasreinigung", "Reinigungsservice").
         - **Getränke**
         - **Bank&SumUp&Linzen**
-        - **Service&Andere**: "Service" correspinds to general stuff for daily business running, e.g. products like pens, or services like cleaning. "Andere" corresponds to unsual or trivial stuff that cannot be precisely determined.
+        - **Service&Andere**: "Service" correspinds to general stuff for daily business running, e.g. products like pens. "Andere" corresponds to unsual or trivial stuff that cannot be precisely determined.
         - **Unternehmen**: Company registration, tax consulting, legal services, etc.
 
         ### Rules
