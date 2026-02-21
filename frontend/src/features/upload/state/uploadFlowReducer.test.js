@@ -82,4 +82,18 @@ describe("uploadFlowReducer", () => {
     });
     expect(next.reportTypeErrorConsumed).toBe(false);
   });
+
+  it("keeps current phase on poll failure and only stores system error", () => {
+    const state = {
+      ...initialUploadState,
+      phase: "tracking",
+      systemError: "",
+    };
+    const next = uploadFlowReducer(state, {
+      type: "POLL_FAILURE",
+      message: "network down",
+    });
+    expect(next.phase).toBe("tracking");
+    expect(next.systemError).toBe("network down");
+  });
 });

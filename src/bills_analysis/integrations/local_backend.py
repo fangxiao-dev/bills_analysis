@@ -5,7 +5,7 @@ import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from openpyxl import Workbook
 
@@ -125,8 +125,13 @@ class LocalPipelineBackend:
         self.root = (root or (Path("outputs") / "webapp")).resolve()
         self.file_timeout_sec = float(os.getenv("BACKEND_FILE_TIMEOUT_SEC", "180"))
 
-    async def process_batch(self, batch: BatchRecord) -> dict[str, Any]:
-        """Process uploaded PDFs and return artifacts plus persisted review rows."""
+    async def process_batch(
+        self,
+        batch: BatchRecord,
+        *,
+        on_file_done: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    ) -> dict[str, Any]:
+        """Process uploaded PDFs with per-file completion callbacks and summary."""
 
         out_dir = self.root / batch.batch_id
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -138,25 +143,23 @@ class LocalPipelineBackend:
         review_path = out_dir / "review_rows.json"
 
         tasks = [
-            self._process_one_file_async(
-                row_id=f"row-{idx:04d}",
-                batch=batch,
-                item=item,
-                archive_root=archive_root,
+            asyncio.create_task(
+                self._process_one_file_async(
+                    row_id=f"row-{idx:04d}",
+                    batch=batch,
+                    item=item,
+                    archive_root=archive_root,
+                )
             )
             for idx, item in enumerate(batch.inputs, start=1)
         ]
-        rows = await asyncio.gather(*tasks)
-
-        errors = []
-        for row in rows:
-            if self._row_has_external_failure(row):
-                errors.append(
-                    f"{row.get('filename', 'unknown')}: "
-                    f"{row.get('extract_error') or row.get('semantic_error') or row.get('error')}"
-                )
-        if errors:
-            raise RuntimeError("; ".join(errors))
+        rows: list[dict[str, Any]] = []
+        for completed in asyncio.as_completed(tasks):
+            row = await completed
+            rows.append(row)
+            if on_file_done is not None:
+                await on_file_done(self._build_file_done_event(row))
+        rows.sort(key=lambda row: str(row.get("row_id") or ""))
 
         results_payload = {
             "batch_id": batch.batch_id,
@@ -185,6 +188,8 @@ class LocalPipelineBackend:
             json.dumps(review_payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        extracted_count = sum(1 for row in rows if self._row_status(row) == "extracted")
+        failed_count = sum(1 for row in rows if self._row_status(row) == "failed")
         return {
             "artifacts": {
                 "result_json_path": str(results_path),
@@ -192,6 +197,11 @@ class LocalPipelineBackend:
                 "archive_root": str(archive_root),
             },
             "review_rows": review_payload,
+            "processing_summary": {
+                "total_count": len(rows),
+                "extracted_count": extracted_count,
+                "failed_count": failed_count,
+            },
         }
 
     async def _process_one_file_async(
@@ -357,6 +367,31 @@ class LocalPipelineBackend:
         """Return whether row contains extraction/semantic external-call failures."""
 
         return bool(row.get("error") or row.get("extract_error") or row.get("semantic_error"))
+
+    def _row_status(self, row: dict[str, Any]) -> str:
+        """Map one backend row payload into the persisted input status contract."""
+
+        return "failed" if self._row_has_external_failure(row) else "extracted"
+
+    def _row_error(self, row: dict[str, Any]) -> str | None:
+        """Extract the canonical per-file error message from processing row payload."""
+
+        error_value = row.get("error") or row.get("extract_error") or row.get("semantic_error")
+        if error_value is None:
+            return None
+        text = str(error_value).strip()
+        return text or None
+
+    def _build_file_done_event(self, row: dict[str, Any]) -> dict[str, Any]:
+        """Build worker callback payload for one completed file processing row."""
+
+        return {
+            "row_id": str(row.get("row_id") or ""),
+            "filename": str(row.get("filename") or ""),
+            "category": str(row.get("category") or ""),
+            "status": self._row_status(row),
+            "error": self._row_error(row),
+        }
 
     async def merge_batch(self, batch: BatchRecord, payload: dict[str, Any]) -> dict[str, Any]:
         """Run real local Excel merge and return merged file artifact metadata."""
