@@ -1,8 +1,11 @@
-﻿/**
+import { useTranslation } from "react-i18next";
+
+/**
  * Status badge tied to backend batch lifecycle values.
  * @param {{ status?: "queued" | "running" | "review_ready" | "merging" | "merged" | "failed" }} props
  */
 export function StatusBadge({ status }) {
+  const { t } = useTranslation();
   const value = status || "queued";
 
   const classesByState = {
@@ -14,5 +17,5 @@ export function StatusBadge({ status }) {
     failed: "bg-red-100 text-red-700 border-red-200",
   };
 
-  return <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${classesByState[value] || classesByState.queued}`}>{value}</span>;
+  return <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${classesByState[value] || classesByState.queued}`}>{t(`status.${value}`)}</span>;
 }

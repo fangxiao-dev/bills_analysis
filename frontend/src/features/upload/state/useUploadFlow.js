@@ -26,6 +26,7 @@ import {
  *    }) => Promise<{ batch_id: string }>;
  *    getReviewRows?: (batchId: string) => Promise<{ rows: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>;
  *    uploadMergeSourceLocal?: (batchId: string, file: File) => Promise<{ monthly_excel_path: string }>;
+ *    reportTypeError?: (batchId: string) => Promise<{ status: "reported" | "skipped"; corrections: Array<Record<string, unknown>> }>;
  *  };
  * }} params
  */
@@ -136,6 +137,11 @@ export function useUploadFlow({ client }) {
         stopPolling(pollRef);
       }
     } catch (error) {
+      if (isTimeoutError(error)) {
+        // Keep tracking on transient timeout instead of switching to failed immediately.
+        schedulePoll(pollRef, pollBatch, 1600);
+        return;
+      }
       pollRef.current.retries += 1;
       if (pollRef.current.retries <= 4) {
         const backoff = 600 * 2 ** (pollRef.current.retries - 1);
@@ -182,6 +188,7 @@ export function useUploadFlow({ client }) {
     }
 
     dispatch({ type: "SUBMIT_START" });
+    const submitStartedAt = Date.now();
 
     try {
       const metadata = {
@@ -229,6 +236,14 @@ export function useUploadFlow({ client }) {
       startPolling(batch.batch_id, 220);
       return true;
     } catch (error) {
+      if (isTimeoutError(error) && typeof client.listBatches === "function") {
+        const recovered = await recoverRecentBatch(client, current, submitStartedAt);
+        if (recovered) {
+          dispatch({ type: "SUBMIT_SUCCESS", batch: recovered });
+          startPolling(recovered.batch_id, 220);
+          return true;
+        }
+      }
       dispatch({ type: "SUBMIT_FAILURE", message: toErrorMessage(error) });
       return false;
     }
@@ -369,6 +384,33 @@ export function useUploadFlow({ client }) {
   );
 
   /**
+   * Report office type mismatch samples for current reviewed batch.
+   * @param {string | null | undefined} [batchIdOverride]
+   */
+  const reportTypeError = useCallback(async (batchIdOverride) => {
+    const current = stateRef.current;
+    const batchId = batchIdOverride || current.batch?.batch_id;
+    if (!batchId) {
+      dispatch({ type: "SET_SYSTEM_ERROR", message: "Batch id is missing." });
+      return null;
+    }
+    if (typeof client.reportTypeError !== "function") {
+      dispatch({ type: "SET_SYSTEM_ERROR", message: "Report type error endpoint is unavailable." });
+      return null;
+    }
+
+    try {
+      const payload = await client.reportTypeError(batchId);
+      dispatch({ type: "REPORT_TYPE_ERROR_SUCCESS", payload });
+      dispatch({ type: "SET_SYSTEM_ERROR", message: "" });
+      return payload;
+    } catch (error) {
+      dispatch({ type: "SET_SYSTEM_ERROR", message: toErrorMessage(error) });
+      return null;
+    }
+  }, [client]);
+
+  /**
    * Retry merge using last merge payload, only when batch failed.
    */
   const retryMerge = useCallback(async () => {
@@ -439,6 +481,7 @@ export function useUploadFlow({ client }) {
       queueMergeOnly,
       fetchReviewRows,
       resolveMonthlyPathFromLocal,
+      reportTypeError,
       retryMerge,
       retryPolling,
     },
@@ -485,4 +528,44 @@ function safeId() {
     return crypto.randomUUID();
   }
   return String(Date.now() + Math.round(Math.random() * 1000));
+}
+
+/**
+ * Check whether an error is a request timeout.
+ * @param {unknown} error
+ */
+function isTimeoutError(error) {
+  return error instanceof AppHttpError && /timed out/i.test(error.message);
+}
+
+/**
+ * Recover a recently-created batch when initial submit request times out.
+ * @param {{ listBatches: (limit?: number) => Promise<{ items?: Array<any> }> }} client
+ * @param {{ batchType: "daily" | "office"; runDate: string; files: Array<any> }} current
+ * @param {number} submitStartedAt
+ */
+async function recoverRecentBatch(client, current, submitStartedAt) {
+  try {
+    const response = await client.listBatches(20);
+    const items = Array.isArray(response?.items) ? response.items : [];
+    const createdLowerBound = submitStartedAt - 120000;
+
+    const matched = items.find((item) => {
+      if (!item || item.type !== current.batchType) {
+        return false;
+      }
+      if ((item.run_date || null) !== (current.runDate || null)) {
+        return false;
+      }
+      const createdAt = Date.parse(item.created_at || "");
+      if (Number.isNaN(createdAt)) {
+        return false;
+      }
+      return createdAt >= createdLowerBound;
+    });
+
+    return matched || null;
+  } catch {
+    return null;
+  }
 }

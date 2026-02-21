@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createRealUploadClient } from "./uploadClient.real";
+import { toErrorMessage } from "../../../lib/http";
 
 describe("uploadClient.real", () => {
   it("calls create batch endpoint with POST", async () => {
@@ -88,6 +89,36 @@ describe("uploadClient.real", () => {
     ).rejects.toBeTruthy();
   });
 
+  it("keeps FastAPI detail list for readable 422 validation feedback", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      text: async () =>
+        JSON.stringify({
+          detail: [
+            {
+              type: "missing",
+              loc: ["body", "rows", 0, "result", "brutto"],
+              msg: "Field required",
+            },
+          ],
+        }),
+    });
+
+    const client = createRealUploadClient({ baseUrl: "http://127.0.0.1:8000", fetchImpl });
+
+    try {
+      await client.createBatch({
+        type: "daily",
+        run_date: "04/02/2026",
+        inputs: [{ path: "a.pdf", category: "bar" }],
+      });
+      throw new Error("Expected createBatch to throw.");
+    } catch (error) {
+      expect(toErrorMessage(error)).toContain("body.rows.0.result.brutto: Field required");
+    }
+  });
+
   it("fetches review rows payload", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
@@ -111,5 +142,33 @@ describe("uploadClient.real", () => {
 
     const payload = await client.uploadMergeSourceLocal("b-1", file);
     expect(payload.monthly_excel_path).toContain("outputs/monthly/current.xlsx");
+  });
+
+  it("calls report-error endpoint and returns correction summary", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          schema_version: "v1",
+          status: "reported",
+          corrections: [
+            {
+              row_id: "row-0001",
+              filename: "office.pdf",
+              original_type: "Service&Andere",
+              corrected_type: "Miete",
+            },
+          ],
+        }),
+    });
+    const client = createRealUploadClient({ baseUrl: "http://127.0.0.1:8000", fetchImpl });
+
+    const payload = await client.reportTypeError("b-1");
+    expect(payload.status).toBe("reported");
+    expect(payload.corrections).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/batches/b-1/report-error",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });

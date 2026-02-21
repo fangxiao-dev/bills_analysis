@@ -58,4 +58,28 @@ describe("uploadFlowReducer", () => {
     expect(next.reviewRowsLoading).toBe(false);
     expect(next.reviewRows).toHaveLength(1);
   });
+
+  it("marks report action consumed only when report status is reported", () => {
+    const state = {
+      ...initialUploadState,
+      reportTypeErrorConsumed: false,
+    };
+    const skipped = uploadFlowReducer(state, { type: "REPORT_TYPE_ERROR_SUCCESS", payload: { status: "skipped" } });
+    const reported = uploadFlowReducer(state, { type: "REPORT_TYPE_ERROR_SUCCESS", payload: { status: "reported" } });
+    expect(skipped.reportTypeErrorConsumed).toBe(false);
+    expect(reported.reportTypeErrorConsumed).toBe(true);
+  });
+
+  it("resets report consumed flag after each successful review submit", () => {
+    const state = {
+      ...initialUploadState,
+      batch: { batch_id: "b1", status: "review_ready", review_rows_count: 1 },
+      reportTypeErrorConsumed: true,
+    };
+    const next = uploadFlowReducer(state, {
+      type: "REVIEW_SUBMIT_SUCCESS",
+      batch: { batch_id: "b1", status: "review_ready", review_rows_count: 2 },
+    });
+    expect(next.reportTypeErrorConsumed).toBe(false);
+  });
 });

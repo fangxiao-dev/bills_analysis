@@ -9,12 +9,21 @@ const runDatePattern = /^\d{2}\/\d{2}\/\d{4}$/;
 
 const passthroughRecordSchema = z.record(z.string(), z.unknown());
 
-const inputFileSchema = z
+const inputFileRequestSchema = z
   .object({
     path: z.string().min(1),
     category: categorySchema.nullable().optional(),
   })
   .strict();
+
+const inputFileResponseSchema = z
+  .object({
+    path: z.string().min(1),
+    category: categorySchema.nullable().optional(),
+    status: z.string().nullable().optional(),
+    error: z.unknown().nullable().optional(),
+  })
+  .passthrough();
 
 const errorInfoSchema = z
   .object({
@@ -29,7 +38,7 @@ const createBatchSchema = z
     type: batchTypeSchema.optional(),
     batch_type: batchTypeSchema.optional(),
     run_date: z.string().regex(runDatePattern).nullable().optional(),
-    inputs: z.array(inputFileSchema).min(1),
+    inputs: z.array(inputFileRequestSchema).min(1),
     metadata: passthroughRecordSchema.optional(),
   })
   .strict()
@@ -75,7 +84,7 @@ const batchResponseSchema = z
     type: batchTypeSchema,
     status: batchStatusSchema,
     run_date: z.string().nullable().optional(),
-    inputs: z.array(inputFileSchema).optional(),
+    inputs: z.array(inputFileResponseSchema).optional(),
     artifacts: passthroughRecordSchema.optional(),
     review_rows_count: z.number().optional(),
     merge_output: passthroughRecordSchema.optional(),
@@ -120,6 +129,23 @@ const createBatchUploadTaskResponseSchema = z
     type: batchTypeSchema,
     status: batchStatusSchema,
     created_at: z.string().datetime(),
+  })
+  .strict();
+
+const reportTypeCorrectionSchema = z
+  .object({
+    row_id: z.string(),
+    filename: z.string(),
+    original_type: z.string(),
+    corrected_type: z.string(),
+  })
+  .strict();
+
+const reportErrorResponseSchema = z
+  .object({
+    schema_version: schemaVersionSchema.default("v1"),
+    status: z.enum(["reported", "skipped"]),
+    corrections: z.array(reportTypeCorrectionSchema),
   })
   .strict();
 
@@ -180,6 +206,14 @@ export function parseCreateBatchUploadTaskResponse(payload) {
 }
 
 /**
+ * Validate report-error API response payload.
+ * @param {unknown} payload
+ */
+export function parseReportErrorResponse(payload) {
+  return reportErrorResponseSchema.parse(payload);
+}
+
+/**
  * Runtime helper for date format validation.
  * @param {string} value
  */
@@ -191,7 +225,8 @@ export {
   batchTypeSchema,
   batchStatusSchema,
   taskTypeSchema,
-  inputFileSchema,
+  inputFileRequestSchema,
+  inputFileResponseSchema,
   createBatchSchema,
   submitReviewSchema,
   mergeRequestSchema,
@@ -199,4 +234,6 @@ export {
   batchListResponseSchema,
   mergeTaskResponseSchema,
   createBatchUploadTaskResponseSchema,
+  reportTypeCorrectionSchema,
+  reportErrorResponseSchema,
 };

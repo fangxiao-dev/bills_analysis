@@ -11,6 +11,7 @@ from openpyxl import Workbook
 
 from bills_analysis.excel_ops import normalize_date, write_datum_cell
 from bills_analysis.integrations.excel_mapper_adapter import map_daily_json_to_excel
+from bills_analysis.integrations.office_semantics import match_receiver_address, resolve_receiver_ok
 from bills_analysis.models.common import InputFile
 from bills_analysis.models.internal import BatchRecord
 from bills_analysis.services.merge_service import merge_daily, merge_office
@@ -87,13 +88,41 @@ def _to_excel_hyperlink(value: Any) -> str | None:
         return str(path)
 
 
+def _resolve_receiver_ok(office_info: dict[str, Any]) -> bool | None:
+    """Normalize Office receiver consistency output to bool using model output and configurable expected receiver."""
+    expected_receiver = os.getenv("OFFICE_EXPECTED_RECEIVER", "Ramen Ippin Dortmund GmbH").strip()
+    expected_address = os.getenv("OFFICE_EXPECTED_RECEIVER_ADDRESS", "Reinoldistr.8 44135 Dortmund").strip()
+    if not expected_receiver or not expected_address:
+        return None
+    return resolve_receiver_ok(
+        office_info,
+        expected_receiver=expected_receiver,
+        expected_address=expected_address,
+    )
+
+
+def _resolve_receiver_address_ok(office_info: dict[str, Any]) -> bool | None:
+    """Normalize Office receiver address consistency output to bool using model output and configurable expected address."""
+
+    receiver_address = office_info.get("receiver_address")
+    if not isinstance(receiver_address, str):
+        return None
+    address_text = receiver_address.strip()
+    if not address_text:
+        return None
+    expected_address = os.getenv("OFFICE_EXPECTED_RECEIVER_ADDRESS", "Reinoldistr.8 44135 Dortmund").strip()
+    if not expected_address:
+        return None
+    return match_receiver_address(address_text, expected_address)
+
+
 class LocalPipelineBackend:
     """Local backend adapter that executes preprocess + extraction flow."""
 
     def __init__(self, *, root: Path | None = None) -> None:
         """Initialize output root and per-file timeout controls."""
 
-        self.root = root or Path("outputs") / "webapp"
+        self.root = (root or (Path("outputs") / "webapp")).resolve()
         self.file_timeout_sec = float(os.getenv("BACKEND_FILE_TIMEOUT_SEC", "180"))
 
     async def process_batch(self, batch: BatchRecord) -> dict[str, Any]:
@@ -240,7 +269,12 @@ class LocalPipelineBackend:
                     model_id=model_id,
                     return_fields=True,
                 )
-                self._fill_office_row(row, azure_result, office_fields)
+                self._fill_office_row(
+                    row,
+                    azure_result,
+                    office_fields,
+                    batch_out_dir=archive_root.parent,
+                )
             else:
                 azure_result = _analyze_pdf_with_azure(
                     source_path,
@@ -272,6 +306,8 @@ class LocalPipelineBackend:
         row: dict[str, Any],
         azure_result: dict[str, Any],
         office_fields: dict[str, Any],
+        *,
+        batch_out_dir: Path,
     ) -> None:
         """Map Azure invoice fields and optional Office semantics into review row."""
 
@@ -284,12 +320,38 @@ class LocalPipelineBackend:
 
         try:
             distilled = _clean_invoice_fields(office_fields)
+            self._persist_office_di_fields(
+                batch_out_dir=batch_out_dir,
+                row_id=str(row.get("row_id") or ""),
+                distilled_fields=distilled,
+            )
             office_info = _extract_office_semantics(distilled)
             row["result"]["type"] = office_info.get("purpose")
             row["result"]["sender"] = office_info.get("sender")
-            row["result"]["receiver"] = office_info.get("receiver")
+            row["result"]["receiver_name"] = office_info.get("receiver")
+            row["result"]["receiver_ok"] = _resolve_receiver_ok(office_info)
+            row["result"]["receiver_address"] = office_info.get("receiver_address")
+            row["result"]["receiver_address_ok"] = _resolve_receiver_address_ok(office_info)
         except Exception as exc:
             row["semantic_error"] = str(exc)
+
+    def _persist_office_di_fields(
+        self,
+        *,
+        batch_out_dir: Path,
+        row_id: str,
+        distilled_fields: dict[str, Any],
+    ) -> None:
+        """Persist per-row distilled DI fields for prompt-tuning dataset collection."""
+
+        normalized_row_id = row_id.strip() or "row-unknown"
+        di_dir = batch_out_dir / "di_fields"
+        di_dir.mkdir(parents=True, exist_ok=True)
+        target_path = di_dir / f"{normalized_row_id}.json"
+        target_path.write_text(
+            json.dumps(distilled_fields, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     def _row_has_external_failure(self, row: dict[str, Any]) -> bool:
         """Return whether row contains extraction/semantic external-call failures."""
@@ -302,19 +364,23 @@ class LocalPipelineBackend:
         out_dir = self.root / batch.batch_id
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        monthly_excel_path = payload.get("monthly_excel_path")
-        if not monthly_excel_path:
-            raise ValueError("monthly_excel_path is required for merge")
-        monthly_excel = Path(str(monthly_excel_path))
-        if not monthly_excel.exists():
-            raise ValueError(f"monthly_excel_path not found: {monthly_excel}")
+        monthly_excel = self._resolve_monthly_excel_path(
+            batch=batch,
+            payload=payload,
+            out_dir=out_dir,
+        )
+        append_mode = str(payload.get("mode", "overwrite")) == "append"
 
         validated_excel = out_dir / f"validated_for_merge_{int(datetime.now().timestamp())}.xlsx"
         if batch.batch_type.value == "daily":
             self._write_daily_validated_excel(batch, validated_excel)
-            merged_excel = merge_daily(validated_excel, monthly_excel, out_dir=out_dir)
+            merged_excel = merge_daily(
+                validated_excel,
+                monthly_excel,
+                out_dir=out_dir,
+                append=append_mode,
+            )
         else:
-            append_mode = str(payload.get("mode", "overwrite")) == "append"
             self._write_office_validated_excel(batch, validated_excel)
             merged_excel = merge_office(
                 validated_excel,
@@ -329,9 +395,10 @@ class LocalPipelineBackend:
                 {
                     "batch_id": batch.batch_id,
                     "mode": payload.get("mode", "overwrite"),
-                    "monthly_excel_path": str(monthly_excel),
-                    "validated_excel_path": str(validated_excel),
-                    "merged_excel_path": str(merged_excel),
+                    "monthly_excel_path": str(monthly_excel.resolve()),
+                    "validated_excel_path": str(validated_excel.resolve()),
+                    "merged_excel_path": str(merged_excel.resolve()),
+                    "merged_excel_download_path": f"/v1/batches/{batch.batch_id}/merge-output/download",
                     "review_rows_count": len(batch.review_rows),
                     "generated_at": datetime.now(UTC).isoformat(),
                 },
@@ -340,11 +407,31 @@ class LocalPipelineBackend:
             ),
             encoding="utf-8",
         )
+        merged_abs_path = str(merged_excel.resolve())
+        merged_download_path = f"/v1/batches/{batch.batch_id}/merge-output/download"
         return {
-            "merge_summary_path": str(merge_summary_path),
-            "validated_excel_path": str(validated_excel),
-            "merged_excel_path": str(merged_excel),
+            "merge_summary_path": str(merge_summary_path.resolve()),
+            "validated_excel_path": str(validated_excel.resolve()),
+            "merged_excel_path": merged_download_path,
+            "output_path": merged_download_path,
+            "merged_excel_abs_path": merged_abs_path,
+            "output_abs_path": merged_abs_path,
+            "merge_mode": str(payload.get("mode", "overwrite")),
         }
+
+    def _resolve_monthly_excel_path(
+        self,
+        *,
+        batch: BatchRecord,
+        payload: dict[str, Any],
+        out_dir: Path,
+    ) -> Path:
+        """Resolve merge target monthly workbook path, defaulting to batch-local auto template path."""
+
+        raw_monthly_excel_path = payload.get("monthly_excel_path")
+        if isinstance(raw_monthly_excel_path, str) and raw_monthly_excel_path.strip():
+            return Path(raw_monthly_excel_path.strip())
+        return out_dir / "merge_source" / f"auto_{batch.batch_type.value}_monthly.xlsx"
 
     def _write_daily_validated_excel(self, batch: BatchRecord, out_path: Path) -> None:
         """Build daily validated workbook from review rows using legacy mapper style logic."""
@@ -388,6 +475,7 @@ class LocalPipelineBackend:
             "Netto",
             "Steuernummer",
             "Is Receiver OK",
+            "Is Receiver Address OK",
             "need review",
             "Rechnung Scannen",
         ]
@@ -410,14 +498,15 @@ class LocalPipelineBackend:
                 result.get("netto"),
                 result.get("tax_id"),
                 result.get("receiver_ok"),
+                result.get("receiver_address_ok"),
                 bool(row.get("need review", False)),
                 row.get("preview_path") or row.get("preview_url"),
             ]
             ws.append(excel_row)
             write_datum_cell(ws.cell(row=row_idx, column=1), datum)
-            link = _to_excel_hyperlink(excel_row[8])
+            link = _to_excel_hyperlink(excel_row[9])
             if link:
-                link_cell = ws.cell(row=row_idx, column=9)
+                link_cell = ws.cell(row=row_idx, column=10)
                 link_cell.value = "check pdf"
                 link_cell.hyperlink = link
             row_idx += 1

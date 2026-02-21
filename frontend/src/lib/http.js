@@ -23,11 +23,9 @@ export function toErrorMessage(error) {
     if (error.status === 405) {
       return "Method not allowed (possible CORS preflight issue). Check backend CORS configuration.";
     }
-    if (typeof error.details === "object" && error.details && "detail" in error.details) {
-      const detail = error.details.detail;
-      if (typeof detail === "string") {
-        return detail;
-      }
+    const detail = extractErrorDetail(error.details);
+    if (detail) {
+      return detail;
     }
     return error.message;
   }
@@ -108,4 +106,65 @@ function safeParseJson(value) {
   } catch {
     return value;
   }
+}
+
+/**
+ * Extract and format FastAPI detail payload into a readable message.
+ * @param {unknown} details
+ */
+function extractErrorDetail(details) {
+  if (!details || typeof details !== "object" || !("detail" in details)) {
+    return "";
+  }
+  return formatDetailValue(details.detail).trim();
+}
+
+/**
+ * Format detail payload variants (string/object/list) into one line.
+ * @param {unknown} detail
+ */
+function formatDetailValue(detail) {
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    return detail.map((item) => formatDetailEntry(item)).filter(Boolean).join("; ");
+  }
+  if (detail && typeof detail === "object") {
+    return formatDetailEntry(detail);
+  }
+  return "";
+}
+
+/**
+ * Format one FastAPI detail entry.
+ * @param {unknown} entry
+ */
+function formatDetailEntry(entry) {
+  if (typeof entry === "string") {
+    return entry;
+  }
+  if (!entry || typeof entry !== "object") {
+    return "";
+  }
+
+  const message = typeof entry.msg === "string" ? entry.msg.trim() : "";
+  const type = typeof entry.type === "string" ? entry.type.trim() : "";
+  const location = Array.isArray(entry.loc)
+    ? entry.loc.map((value) => String(value).trim()).filter(Boolean).join(".")
+    : "";
+
+  if (location && message) {
+    return `${location}: ${message}`;
+  }
+  if (message) {
+    return message;
+  }
+  if (location && type) {
+    return `${location}: ${type}`;
+  }
+  if (type) {
+    return type;
+  }
+  return "";
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -77,6 +78,56 @@ class BatchService:
         await self.repo.save(batch)
         return batch
 
+    async def report_type_error(self, batch_id: str) -> dict[str, Any]:
+        """Snapshot office batch artifacts and return corrected type diffs from human review."""
+
+        batch = await self.repo.get(batch_id)
+        if batch is None:
+            raise KeyError(batch_id)
+
+        batch_out_dir = self._resolve_batch_output_dir(batch)
+        results_path = self._resolve_results_path(batch, batch_out_dir)
+        submitted_path = batch_out_dir / "review_rows_submitted.json"
+        if not results_path.exists():
+            raise ValueError("results.json not found for this batch")
+        if not submitted_path.exists():
+            raise ValueError("review_rows_submitted.json not found; submit review first")
+
+        results_payload = self._load_json_artifact(results_path, label="results.json")
+        submitted_rows = self._load_json_artifact(submitted_path, label="review_rows_submitted.json")
+        if not isinstance(results_payload, dict):
+            raise ValueError("results.json must be a JSON object")
+        if not isinstance(submitted_rows, list):
+            raise ValueError("review_rows_submitted.json must be a JSON array")
+
+        corrections = self._compute_type_corrections(results_payload, submitted_rows)
+        if not corrections:
+            return {
+                "status": "skipped",
+                "corrections": [],
+            }
+
+        dataset_root = Path("dataset") / "type_errors" / batch_id
+        dataset_root.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(batch_out_dir, dataset_root, dirs_exist_ok=True)
+        summary_path = dataset_root / "correction_summary.json"
+        summary_path.write_text(
+            json.dumps(
+                {
+                    "batch_id": batch_id,
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "corrections": corrections,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "status": "reported",
+            "corrections": corrections,
+        }
+
     async def request_merge(self, batch_id: str, req: MergeRequest) -> QueueTask:
         """Mark batch as merging and enqueue merge task."""
 
@@ -84,8 +135,6 @@ class BatchService:
         if batch is None:
             raise KeyError(batch_id)
         monthly_excel_path = req.monthly_excel_path or batch.artifacts.get("monthly_excel_path")
-        if not monthly_excel_path:
-            raise ValueError("monthly_excel_path is required or upload via /merge-source/local first")
         payload = req.model_dump()
         payload["monthly_excel_path"] = monthly_excel_path
         task = QueueTask.new(
@@ -115,23 +164,12 @@ class BatchService:
             if not filename:
                 raise ValueError(f"row[{index}] filename is required")
 
-            result = row.get("result") if isinstance(row.get("result"), dict) else {}
-            if not result:
-                # Transitional compatibility: frontend may submit flattened editable fields at top level.
-                for key in [
-                    "brutto",
-                    "netto",
-                    "store_name",
-                    "total_tax",
-                    "run_date",
-                    "type",
-                    "sender",
-                    "tax_id",
-                    "receiver_ok",
-                    "receiver",
-                ]:
-                    if row.get(key) is not None:
-                        result[key] = row.get(key)
+            result = row.get("result")
+            if not isinstance(result, dict):
+                raise ValueError(
+                    f"row[{index}] result must be an object in canonical shape "
+                    "{row_id,category,filename,result,score,preview_path}"
+                )
             if run_date and result.get("run_date") in (None, "", "None"):
                 result["run_date"] = run_date
             meaningful_keys = [
@@ -139,9 +177,10 @@ class BatchService:
                 for key, value in result.items()
                 if key != "run_date" and value not in (None, "", "None")
             ]
-            if not isinstance(result, dict) or not meaningful_keys:
+            if not meaningful_keys:
                 raise ValueError(
-                    f"row[{index}] must include non-empty result object or mappable top-level result fields"
+                    f"row[{index}] result must include non-empty business fields in canonical shape "
+                    "{row_id,category,filename,result,score,preview_path}"
                 )
 
             score = row.get("score") if isinstance(row.get("score"), dict) else {}
@@ -170,3 +209,100 @@ class BatchService:
 
         submitted_path = target_path.parent / "review_rows_submitted.json"
         submitted_path.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _resolve_batch_output_dir(self, batch: BatchRecord) -> Path:
+        """Resolve batch output directory from persisted artifact paths with safe fallback."""
+
+        result_json_path = batch.artifacts.get("result_json_path")
+        if isinstance(result_json_path, str) and result_json_path.strip():
+            return Path(result_json_path).resolve().parent
+
+        review_json_path = batch.artifacts.get("review_json_path")
+        if isinstance(review_json_path, str) and review_json_path.strip():
+            return Path(review_json_path).resolve().parent
+
+        return (Path("outputs") / "webapp" / batch.batch_id).resolve()
+
+    def _resolve_results_path(self, batch: BatchRecord, batch_out_dir: Path) -> Path:
+        """Resolve results.json path with artifact pointer preferred over default location."""
+
+        result_json_path = batch.artifacts.get("result_json_path")
+        if isinstance(result_json_path, str) and result_json_path.strip():
+            return Path(result_json_path).resolve()
+        return batch_out_dir / "results.json"
+
+    def _load_json_artifact(self, path: Path, *, label: str) -> Any:
+        """Load one UTF-8 JSON artifact and raise user-facing ValueError on invalid content."""
+
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{label} is not valid JSON") from exc
+
+    def _compute_type_corrections(
+        self,
+        results_payload: dict[str, Any],
+        submitted_rows: list[dict[str, Any]],
+    ) -> list[dict[str, str]]:
+        """Compute office `type` differences between extraction results and submitted review rows."""
+
+        items = results_payload.get("items", [])
+        if not isinstance(items, list):
+            raise ValueError("results.json items must be an array")
+
+        original_by_row_id: dict[str, str] = {}
+        original_by_filename: dict[str, str] = {}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("category") or "").strip().lower() != "office":
+                continue
+            result = item.get("result")
+            if not isinstance(result, dict):
+                continue
+            original_type = result.get("type")
+            if not isinstance(original_type, str) or not original_type.strip():
+                continue
+            normalized_original_type = original_type.strip()
+            row_id = str(item.get("row_id") or "").strip()
+            filename = str(item.get("filename") or "").strip()
+            if row_id:
+                original_by_row_id[row_id] = normalized_original_type
+            if filename and filename not in original_by_filename:
+                original_by_filename[filename] = normalized_original_type
+
+        corrections: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for row in submitted_rows:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("category") or "").strip().lower() != "office":
+                continue
+            result = row.get("result")
+            if not isinstance(result, dict):
+                continue
+            corrected_type = result.get("type")
+            if not isinstance(corrected_type, str) or not corrected_type.strip():
+                continue
+            normalized_corrected_type = corrected_type.strip()
+
+            row_id = str(row.get("row_id") or "").strip()
+            filename = str(row.get("filename") or "").strip()
+            original_type = original_by_row_id.get(row_id) or original_by_filename.get(filename)
+            if not original_type or normalized_corrected_type == original_type:
+                continue
+
+            key = (row_id, filename)
+            if key in seen:
+                continue
+            seen.add(key)
+            corrections.append(
+                {
+                    "row_id": row_id,
+                    "filename": filename,
+                    "original_type": original_type,
+                    "corrected_type": normalized_corrected_type,
+                }
+            )
+
+        return corrections

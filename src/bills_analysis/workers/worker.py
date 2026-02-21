@@ -4,7 +4,22 @@ import asyncio
 from datetime import UTC, datetime
 
 from bills_analysis.models.enums import BatchStatus, TaskType
+from bills_analysis.models.internal import BatchRecord
 from bills_analysis.services.ports import BatchRepository, ProcessingBackend, TaskQueue
+
+
+def _set_all_input_status(
+    batch: BatchRecord,
+    *,
+    status: str,
+    error: str | None = None,
+) -> None:
+    """Set one status for all batch input files using immutable model updates."""
+
+    updated_inputs = []
+    for item in batch.inputs:
+        updated_inputs.append(item.model_copy(update={"status": status, "error": error}))
+    batch.inputs = updated_inputs
 
 
 class BatchWorker:
@@ -39,6 +54,7 @@ class BatchWorker:
                 return
             if task.task_type == TaskType.PROCESS_BATCH:
                 batch.status = BatchStatus.RUNNING
+                _set_all_input_status(batch, status="processing", error=None)
                 batch.updated_at = datetime.now(UTC)
                 await self.repo.save(batch)
                 process_output = await self.backend.process_batch(batch)
@@ -47,6 +63,7 @@ class BatchWorker:
                 batch.review_rows = review_rows
                 batch.artifacts.update(artifacts)
                 batch.status = BatchStatus.REVIEW_READY
+                _set_all_input_status(batch, status="extracted", error=None)
                 batch.error = None
                 batch.updated_at = datetime.now(UTC)
                 await self.repo.save(batch)
@@ -64,6 +81,8 @@ class BatchWorker:
             if batch is not None:
                 batch.status = BatchStatus.FAILED
                 batch.error = str(exc)
+                if task.task_type == TaskType.PROCESS_BATCH:
+                    _set_all_input_status(batch, status="failed", error=str(exc))
                 batch.updated_at = datetime.now(UTC)
                 await self.repo.save(batch)
         finally:

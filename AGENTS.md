@@ -57,87 +57,98 @@
 - 对于枚举定义，需要给出注释（每个enum项后用#号注释即可），但如果是通过Pydantic定义的枚举类，也要遵循上述对类的注释要求。
 
 
-## 4) 双 Session 协作规则（核心）
-### 4.1 角色边界
-- Agent A（Frontend session）仅改：
-  - `frontend/**`
-  - 前端相关文档与 API 调用示例
-- Agent B（Backend session）仅改：
-  - `src/bills_analysis/**`
-  - 后端相关 `tests/*.py`（迁移期）
-  - `README.md` 后端段落
+## 4) Task-Based Worktree Workflow（核心）
 
-### 4.2 禁止互改
-- 前端 Agent A 不改 `src/bills_analysis/**` 和 `tests/*.py` 的新老业务逻辑。
-- 后端 Agent B 不改 `frontend/**` UI/样式/构建配置。
-- 对API（`src/bills_analysis/models/`）的修改见 `4.5 API 契约优先` 规则
+### 4.1 Workflow Overview
 
-### 4.3 分支与提交约定
-- Backend 分支：`feat-backend*`
-- Frontend 分支：`feat-frontend*`
-- Commit 前缀：
-  - Backend: `backend: ...`
-  - Frontend: `frontend: ...`
-- 不允许在同一 commit 混合前后端改动。
+本项目采用任务 worktree 模式，每个功能点（task）在独立 worktree 中开发：
 
-### 4.4 Session Notes 机制（个人多 Session，必做）
-本项目统一使用 `SESSION_NOTES.md`（fenced JSON）记录多 Agent 交接；每条记录一个 ` ```json ... ``` ` 代码块。
+1. **PM Role**（main 分支）：仅负责创建任务定义和分配 `task_id`，不直接编码。
+2. **Task Execution**：基于 task ID 创建 worktree，在内部完成 planning → implementation → testing。
+3. **Integration**：同步 main → 完整回归测试 → 合并回 main。
 
-字段规范：
-1. 必填：`id`, `ts`, `status`, `scope`, `who`, `what`, `next`
-2. 可选：`dep`, `risk`
-3. `status` 固定为 `OPEN`（单状态）
-4. `who` 必须包含：`agent`, `side`, `branch`, `head`
-5. `what` 用数组记录变更动作，并包含必要动机（`what + why`）
-6. `dep` 仅在需要对方协作时填写
-7. `next` 必须包含：`goal`, `owner`
+### 4.2 File Scope Guidance
 
-记录方式（自动写入）：
-- 每完成一个可交接单元后执行：
-  - `python scripts/session_notes.py log --scope "<scope>" --agent <agent> --side <frontend|backend> --what "<what>" --why "<why>" --next-goal "<goal>" --next-owner "<owner>"`
-- 可重复参数：`--what`、`--dep`、`--risk`
-- `id` 默认自动递增（如 `C-001`），可选 `--id` 手工指定
-- 当前脚本仅解析 fenced JSON 记录；若有历史 JSONL 行，需先迁移后再继续自动递增。
+在单个任务 worktree 中允许同时修改前后端文件，但应保持语义清晰：
 
-fenced JSON 示例：
-```json
-{
-  "id": "C-001",
-  "ts": "2026-02-13T16:20:00+01:00",
-  "status": "OPEN",
-  "scope": "upload-review chain",
-  "who": {"agent":"agent-a","side":"frontend","branch":"feat-frontend","head":"28997aa"},
-  "what": ["connected Upload->Review->Submit flow","why: backend requires canonical nested payload"],
-  "dep": ["backend: CORS allow http://localhost:5173"],
-  "risk": ["mock API only; real API not validated"],
-  "next": {"goal":"switch to real API and run smoke","owner":"agent-a"}
-}
-```
+- Frontend scope：`frontend/**`、前端相关文档
+- Backend scope：`src/bills_analysis/**`、`tests/*.py`
+- 跨范围任务（如新 API + frontend integration）可在同一 worktree 完成
+- 通过语义指导控制 Agent 上下文范围，避免过长的上下文导致偏移
 
-### 4.5 API 契约优先
-- 前后端统一读 `src/bills_analysis/models/` 中的 schema。
-- API 变更必须先更新 schema，再更新调用方。
-- breaking change 必须在 `SESSION_NOTES.md` 明确说明（在 `risk` 字段中记录影响和迁移建议）。
+详见 `.claude/rules/collaboration-boundaries.md`。
 
-### 4.6 配置与密钥
+### 4.3 Branch & Commit Conventions
+
+- 分支命名：`feat/<task_id>-<slug>`（例如 `feat/TC-007-batch-delete`）
+- Commit 前缀：`<task_id>: <描述>`（例如 `TC-007: add batch delete endpoint and UI`）
+- 允许在单个 commit 中同时包含前后端改动，要求围绕同一 task_id 且原子
+- 建议在可能时拆分为多个 commit 以保持历史清晰，但不强制
+
+### 4.4 API 契约优先
+- 统一读 `src/bills_analysis/models/` 中的 schema。
+- API 变更必须先更新 schema，再更新调用方（即使在同一 worktree 中也应遵循此顺序）。
+- `v1` 在 M1 期间冻结，breaking change 禁止。如必须变更，先版本升级并在 `findings.<plan_id>.md` 中记录风险和迁移建议。
+
+### 4.5 配置与密钥
 - `.env` 不入库。
 - 示例放 `.env.example`。
 - 阈值与业务参数统一走 `tests/config.json`（后续迁移到 `config/`）。
 
-### 4.7 前后端并行开发同步规则
-- 默认工作模式为并行：Backend 与 Frontend 可同时推进，不要求“后端全部完成后再启动前端”。
-- Frontend 开发以 `src/bills_analysis/models/` 的 `v1` schema 为唯一契约来源，不直接依赖临时脚本返回结构。
-- Backend 在 M1 期间允许重构内部实现，但不得破坏 `v1` API 兼容性；若必须变更，先升级版本再通知前端切换。
-- 每个 session 结束时在 `SESSION_NOTES.md` 明确记录当前契约版本、联调状态、阻塞项（若有）。
+### 4.6 Regression Gate
+
+Task worktree 合并回 main 前必须通过：
+
+```bash
+# 1. 同步 main
+git merge main
+
+# 2. Backend contract test
+uv run pytest tests/test_api_schema_v1.py -q
+
+# 3. Frontend tests
+pnpm --dir frontend test
+
+# 4. (可选) E2E smoke test
+# uv run pytest tests/test_api_e2e_smoke.py -q  # 待创建
+```
+
+### 4.7 Worktree Lifecycle Example
+
+```bash
+# 1. PM 在 main 上创建 task（plans/todo_current.md, UNPLANNED）
+
+# 2. 创建 worktree
+git worktree add -b feat/TC-007-batch-delete ../wt-TC-007 main
+cd ../wt-TC-007
+
+# 3. Planning
+python scripts/plan_tracker.py quick-plan --task-ids TC-007
+# 或使用 /planning-with-files skill
+
+# 4. Implementation（前后端均可修改）
+
+# 5. Sync main + regression
+git merge main
+uv run pytest tests/test_api_schema_v1.py -q
+pnpm --dir frontend test
+
+# 6. Merge to main
+git checkout main
+git merge feat/TC-007-batch-delete
+
+# 7. Cleanup
+git worktree remove ../wt-TC-007
+```
 
 
 
-## 5) 近期里程碑
-- M1（当前并行主线）：
-  - Backend：把 tests 中已验证业务逻辑下沉到 `services/integrations`，保持行为不变。
-  - Frontend：基于已冻结 `v1` API schema 同步构建上传/状态查询/校验提交流程页面与调用链路。
-- M2（并行收口）：开放并稳定 API（create batch / query status / submit review / merge），并确保前端调用链路在同版本契约下可联调。
-- M3：前端完成上传-校验-确认-下载闭环，并与后端 merge 结果页对齐。
+## 5) 里程碑（全局视角）
+- **M1: MVP 本地全流程闭环**（当前）：完成上传→提取→人工校验→merge 入账的完整 Web App 流程，前后端联调通过，本地可运行。包含：后端迁移到分层架构、前端基于 `v1` 契约开发调用链路、API 稳定开放、前端闭环与 merge 结果页对齐。
+- **M2: Docker Demo**：将前后端封装为 Docker 容器（docker compose），用户可在本地一键启动试用。
+- **M3: Azure 上线**：基于 Azure 基础设施（SWA + Functions/Container Apps）正式部署上线。
+
+当前里程碑待实现功能点见 `plans/todo_current.md`；未来里程碑功能点见 `plans/todo_future.md`。
 
 ## 5.1 启动与验证最小命令
 - 旧流程（真实业务链）：  
@@ -152,11 +163,25 @@ fenced JSON 示例：
 - 导出 OpenAPI v1 基线：  
   `uv run python scripts/export_openapi_v1.py`
 
-## 5.2 当前里程碑冻结点
+## 5.2 当前里程碑冻结点（M1）
 - `v1` API schema 已冻结（`src/bills_analysis/models/`）。
 - 非兼容变更禁止：不得删除/重命名/改类型已发布字段。
-- 如需变更，必须先版本升级（如 `v1.1`/`v2`）并在 `SESSION_NOTES.md` 标注 breaking change。
-- 并行开发期间，前端默认对接 `v1` 冻结契约；后端在 M1 内部重构不得改变 `v1` 对外字段与语义。
+- 如需变更，必须先版本升级（如 `v1.1`/`v2`）并在 `findings.<plan_id>.md` 标注 breaking change 风险和迁移建议。
+- 并行开发期间，前端默认对接 `v1` 冻结契约；后端内部重构不得改变 `v1` 对外字段与语义。
+
+## 5.3 Task Tracking
+- `plans/todo_current.md`：当前里程碑任务主表（结构化字段：`task_id/task/status/plan_id/updated_at/note`）。
+- 状态机固定：`UNPLANNED -> PLANNED -> DONE`，并要求 `PLANNED` / `DONE` 必须绑定 `plan_id`。
+- `plans/workplans/`：每个 plan 的三文件上下文（`task_plan/findings/progress`）。
+- `plans/todo_future.md`：未来里程碑的功能点，仅记录参考，暂不实现。
+- 任务状态更新优先通过 `python scripts/plan_tracker.py ...` 维护，减少多人并行编辑冲突。
+- 详细规则：`.claude/rules/planning-with-files.md`
+- 操作手册：`plans/workplans/README.md`
+
+## 5.4 Planning-with-files（索引）
+- 本仓库的 `/planning-with-files` 采用 task-tracker + workplans 机制，支持用户指定范围与 agent 自主选题并行推进。
+- 触发语义、并行约束、命令契约等稳定规则统一维护在：`.claude/rules/planning-with-files.md`。
+- 日常使用命令与示例统一维护在：`plans/workplans/README.md`。
 
 ## 6) 从本地 Excel 过渡到 Lark 的目标工作流
 当前流程：`PDF -> 识别 JSON -> 待校验 Excel -> 人工修正 -> merge Excel`。
@@ -178,7 +203,7 @@ Lark 接入策略：
 - 功能可运行（本地最小命令）
 - 有日志和错误提示
 - 不破坏既有脚本主流程
-- 文档同步更新（README + SESSION_NOTES.md）
+- 文档同步更新（README + plan 三文件 progress/findings）
 
 ## 8) Skills 使用约定
 ### 8.1 前端 Skills 的规则
@@ -187,5 +212,9 @@ Lark 接入策略：
 - 触发方式：
   - 在需求中显式写 `$frontend-design` 或 `$vercel-react-best-practices`。
   - 或任务描述明确属于对应 skill 的适用范围（如组件构建、页面设计、React 性能优化等）。
-- Skill 文件路径约定：`/.codex/skills/**/SKILL.md`。
+- Skill 文件路径约定：`/.agents/skills/**/SKILL.md`。
 - 若 skill 缺失、未安装或路径不可读，需在回复中明确说明，并使用常规方案继续执行。
+
+### 8.2 Task Worktree Lifecycle Skill
+- 当任务包含完整 worktree 生命周期操作（创建 worktree、同步配置、环境初始化、回归前同步 `dev`、合并回 `dev`）时，使用 `task-worktree-lifecycle`。
+- 详细文档：`.agents/skills/task-worktree-lifecycle/SKILL.md`

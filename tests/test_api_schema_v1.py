@@ -131,6 +131,8 @@ def test_api_contract_v1_endpoints() -> None:
         assert create_res.headers.get("access-control-allow-origin") == "http://127.0.0.1:5173"
         created = create_res.json()
         assert created["schema_version"] == "v1"
+        assert created["inputs"][0]["status"] == "queued"
+        assert created["inputs"][0]["error"] is None
         batch_id = created["batch_id"]
 
         get_res = client.get(f"/v1/batches/{batch_id}")
@@ -246,7 +248,7 @@ def test_review_rows_and_preview_routes() -> None:
 
 
 def test_submit_review_rejects_missing_result_shape() -> None:
-    """Review submit should return 422 when row has neither result nor mappable fields."""
+    """Review submit should return 422 when row does not provide canonical nested result."""
 
     TestClient, app = _get_test_client_and_app()
     with TestClient(app) as client:
@@ -274,10 +276,11 @@ def test_submit_review_rejects_missing_result_shape() -> None:
             },
         )
         assert review_res.status_code == 422
+        assert "canonical shape" in review_res.json()["detail"]
 
 
-def test_submit_review_flatted_fields_are_normalized_and_persisted() -> None:
-    """Flattened review fields should be normalized into result and persisted artifact."""
+def test_submit_review_flattened_fields_rejected() -> None:
+    """Flattened top-level review fields must be rejected after compatibility removal."""
 
     TestClient, app = _get_test_client_and_app()
     with TestClient(app) as client:
@@ -308,6 +311,45 @@ def test_submit_review_flatted_fields_are_normalized_and_persisted() -> None:
                 ]
             },
         )
+        assert review_res.status_code == 422
+        assert "result must be an object" in review_res.json()["detail"]
+
+
+def test_submit_review_canonical_shape_persisted_to_review_artifacts() -> None:
+    """Canonical nested review payload should persist both review artifact files."""
+
+    TestClient, app = _get_test_client_and_app()
+    with TestClient(app) as client:
+        create_res = client.post(
+            "/v1/batches",
+            json={
+                "type": "daily",
+                "run_date": "04/02/2026",
+                "inputs": [{"path": "a.pdf", "category": "bar"}],
+                "metadata": {},
+            },
+        )
+        assert create_res.status_code == 200
+        batch_id = create_res.json()["batch_id"]
+
+        review_res = client.put(
+            f"/v1/batches/{batch_id}/review",
+            json={
+                "rows": [
+                    {
+                        "row_id": "row-0001",
+                        "filename": "a.pdf",
+                        "category": "bar",
+                        "result": {
+                            "brutto": "12.30",
+                            "netto": "10.00",
+                            "store_name": "Demo",
+                        },
+                        "score": {"brutto": 0.91},
+                    }
+                ]
+            },
+        )
         assert review_res.status_code == 200
 
         rows_res = client.get(f"/v1/batches/{batch_id}/review-rows")
@@ -321,6 +363,93 @@ def test_submit_review_flatted_fields_are_normalized_and_persisted() -> None:
         assert review_file.exists()
         saved_rows = json.loads(review_file.read_text(encoding="utf-8"))
         assert saved_rows[0]["result"]["brutto"] == "12.30"
+
+        submitted_file = Path("outputs") / "webapp" / batch_id / "review_rows_submitted.json"
+        assert submitted_file.exists()
+        submitted_rows = json.loads(submitted_file.read_text(encoding="utf-8"))
+        assert submitted_rows[0]["result"]["brutto"] == "12.30"
+
+
+def test_report_error_endpoint_copies_batch_artifacts_and_returns_type_corrections() -> None:
+    """Report-error endpoint should snapshot artifacts and return office type correction diffs."""
+
+    TestClient, app = _get_test_client_and_app()
+    with TestClient(app) as client:
+        create_res = client.post(
+            "/v1/batches",
+            json={
+                "type": "office",
+                "run_date": "04/02/2026",
+                "inputs": [{"path": "a.pdf", "category": "office"}],
+                "metadata": {},
+            },
+        )
+        assert create_res.status_code == 200
+        batch_id = create_res.json()["batch_id"]
+
+        batch_out = Path("outputs") / "webapp" / batch_id
+        batch_out.mkdir(parents=True, exist_ok=True)
+        results_path = batch_out / "results.json"
+        results_path.write_text(
+            json.dumps(
+                {
+                    "batch_id": batch_id,
+                    "batch_type": "office",
+                    "items": [
+                        {
+                            "row_id": "row-0001",
+                            "filename": "a.pdf",
+                            "category": "office",
+                            "result": {"type": "Service&Andere"},
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        di_dir = batch_out / "di_fields"
+        di_dir.mkdir(parents=True, exist_ok=True)
+        (di_dir / "row-0001.json").write_text(
+            json.dumps({"invoice_no": "A-100"}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        review_res = client.put(
+            f"/v1/batches/{batch_id}/review",
+            json={
+                "rows": [
+                    {
+                        "row_id": "row-0001",
+                        "filename": "a.pdf",
+                        "category": "office",
+                        "result": {"type": "Miete"},
+                        "score": {},
+                    }
+                ]
+            },
+        )
+        assert review_res.status_code == 200
+
+        report_res = client.post(f"/v1/batches/{batch_id}/report-error")
+        assert report_res.status_code == 200
+        body = report_res.json()
+        assert body["schema_version"] == "v1"
+        assert body["status"] == "reported"
+        assert len(body["corrections"]) == 1
+        assert body["corrections"][0]["row_id"] == "row-0001"
+        assert body["corrections"][0]["original_type"] == "Service&Andere"
+        assert body["corrections"][0]["corrected_type"] == "Miete"
+
+        dataset_dir = Path("dataset") / "type_errors" / batch_id
+        assert (dataset_dir / "results.json").exists()
+        assert (dataset_dir / "review_rows_submitted.json").exists()
+        assert (dataset_dir / "di_fields" / "row-0001.json").exists()
+        summary_path = dataset_dir / "correction_summary.json"
+        assert summary_path.exists()
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        assert summary["corrections"][0]["corrected_type"] == "Miete"
 
 
 def test_review_rows_not_found_returns_404() -> None:
@@ -357,6 +486,31 @@ def test_merge_source_local_upload_and_merge_fallback() -> None:
         upload_body = upload_res.json()
         assert upload_body["source_type"] == "local_excel"
         assert Path(upload_body["monthly_excel_path"]).exists()
+
+        merge_res = client.post(
+            f"/v1/batches/{batch_id}/merge",
+            json={"mode": "overwrite", "metadata": {}},
+        )
+        assert merge_res.status_code == 200
+        assert merge_res.json()["task_type"] == "merge_batch"
+
+
+def test_merge_without_monthly_path_is_accepted_for_auto_template() -> None:
+    """Merge queue endpoint should accept missing monthly path for backend auto-template flow."""
+
+    TestClient, app = _get_test_client_and_app()
+    with TestClient(app) as client:
+        create_res = client.post(
+            "/v1/batches",
+            json={
+                "type": "daily",
+                "run_date": "04/02/2026",
+                "inputs": [{"path": "a.pdf", "category": "bar"}],
+                "metadata": {},
+            },
+        )
+        assert create_res.status_code == 200
+        batch_id = create_res.json()["batch_id"]
 
         merge_res = client.post(
             f"/v1/batches/{batch_id}/merge",
@@ -590,6 +744,75 @@ def test_local_backend_calls_preprocess_and_extract(monkeypatch: pytest.MonkeyPa
     assert len(artifacts["review_rows"]) == 1
 
 
+def test_local_backend_persists_office_di_fields_artifact(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Office processing should persist cleaned DI fields by row id for prompt tuning datasets."""
+
+    def fake_compress(pdf_path: Path, *, dest_dir: Path, dpi: int, name_suffix: str) -> Path:
+        """Stub compression helper returning a deterministic archive path."""
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        archived = dest_dir / f"{pdf_path.stem}_{name_suffix}.pdf"
+        archived.write_bytes(b"%PDF-1.4\narchived\n%%EOF")
+        return archived
+
+    def fake_analyze(pdf_path: Path, *, model_id: str, return_fields: bool) -> Any:
+        """Stub extraction helper returning office fields payload."""
+
+        payload = {
+            "brutto": 123.45,
+            "netto": 100.0,
+            "invoice_id": "INV-001",
+            "confidence_brutto": 0.95,
+            "confidence_netto": 0.91,
+            "confidence_invoice_id": 0.87,
+        }
+        office_fields = {"raw_invoice_no": "INV-RAW-001"}
+        if return_fields:
+            return payload, office_fields
+        return payload
+
+    def fake_clean(fields_payload: dict[str, Any]) -> dict[str, Any]:
+        """Stub clean adapter returning deterministic distilled DI dict."""
+
+        return {"invoice_no": fields_payload.get("raw_invoice_no")}
+
+    def fake_semantics(distilled_fields: dict[str, Any]) -> dict[str, Any]:
+        """Stub semantic adapter returning office type/sender info."""
+
+        return {
+            "purpose": "Service&Andere",
+            "sender": "Vendor A",
+            "receiver": "Ramen Ippin Dortmund GmbH",
+            "receiver_address": "Reinoldistr.8 44135 Dortmund",
+            "distilled_echo": distilled_fields,
+        }
+
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._compress_pdf_for_archive", fake_compress)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._analyze_pdf_with_azure", fake_analyze)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._clean_invoice_fields", fake_clean)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._extract_office_semantics", fake_semantics)
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    src_pdf = test_root / "office_input.pdf"
+    src_pdf.write_bytes(b"%PDF-1.4\nsource\n%%EOF")
+    req = CreateBatchRequest(
+        type="office",
+        run_date="04/02/2026",
+        inputs=[{"path": str(src_pdf), "category": "office"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    asyncio.run(backend.process_batch(batch))
+
+    di_fields_path = backend.root / batch.batch_id / "di_fields" / "row-0001.json"
+    assert di_fields_path.exists()
+    saved = json.loads(di_fields_path.read_text(encoding="utf-8"))
+    assert saved["invoice_no"] == "INV-RAW-001"
+
+
 def test_local_backend_process_batch_raises_on_extract_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     """Any file extraction failure should raise to trigger worker failed status."""
 
@@ -687,6 +910,154 @@ def test_local_backend_merge_builds_non_empty_daily_validated_excel() -> None:
     assert "Umsatz Brutto" in headers
     brutto_col = headers.index("Umsatz Brutto") + 1
     assert merged_ws.cell(row=2, column=brutto_col).value is not None
+
+
+def test_local_backend_daily_merge_creates_missing_monthly_and_supports_append() -> None:
+    """Daily merge should auto-create missing monthly workbook and honor append mode."""
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    missing_monthly = test_root / "missing_daily_monthly.xlsx"
+
+    req = CreateBatchRequest(
+        type="daily",
+        run_date="04/02/2026",
+        inputs=[{"path": str(test_root / "dummy.pdf"), "category": "zbon"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    batch.review_rows = [
+        {
+            "row_id": "row-0001",
+            "category": "zbon",
+            "filename": "zbon.pdf",
+            "result": {"run_date": "04/02/2026", "brutto": "123.45", "netto": "100.00"},
+            "score": {"brutto": 0.95, "netto": 0.95},
+            "preview_path": str(test_root / "preview.pdf"),
+        }
+    ]
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    first_output = asyncio.run(
+        backend.merge_batch(
+            batch,
+            {"mode": "overwrite", "monthly_excel_path": str(missing_monthly)},
+        )
+    )
+    assert missing_monthly.exists()
+    first_merged = load_workbook(Path(first_output["merged_excel_abs_path"])).active
+    assert first_merged.max_row == 2
+
+    second_output = asyncio.run(
+        backend.merge_batch(
+            batch,
+            {"mode": "append", "monthly_excel_path": first_output["merged_excel_abs_path"]},
+        )
+    )
+    second_merged = load_workbook(Path(second_output["merged_excel_abs_path"])).active
+    assert second_merged.max_row == 3
+    assert second_merged.cell(row=2, column=1).value.strftime("%d/%m/%Y") == "04/02/2026"
+    assert second_merged.cell(row=3, column=1).value.strftime("%d/%m/%Y") == "04/02/2026"
+
+
+def test_local_backend_office_merge_auto_creates_monthly_template_and_supports_append() -> None:
+    """Office merge should auto-create missing monthly workbook and honor append mode."""
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    req = CreateBatchRequest(
+        type="office",
+        run_date="04/02/2026",
+        inputs=[{"path": str(test_root / "dummy.pdf"), "category": "office"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    batch.review_rows = [
+        {
+            "row_id": "row-0001",
+            "category": "office",
+            "filename": "office.pdf",
+            "result": {
+                "run_date": "04/02/2026",
+                "type": "Miete",
+                "sender": "Metro",
+                "brutto": "123.45",
+                "netto": "100.00",
+                "tax_id": "DE123",
+                "receiver_ok": True,
+            },
+            "score": {"brutto": 0.95, "netto": 0.95},
+            "preview_path": str(test_root / "preview.pdf"),
+        }
+    ]
+    backend = LocalPipelineBackend(root=test_root / "out")
+    auto_monthly = backend.root / batch.batch_id / "merge_source" / "auto_office_monthly.xlsx"
+
+    first_output = asyncio.run(
+        backend.merge_batch(
+            batch,
+            {"mode": "overwrite"},
+        )
+    )
+    assert auto_monthly.exists()
+    first_merged = load_workbook(Path(first_output["merged_excel_abs_path"])).active
+    assert first_merged.max_row == 2
+
+    second_output = asyncio.run(
+        backend.merge_batch(
+            batch,
+            {"mode": "append", "monthly_excel_path": first_output["merged_excel_abs_path"]},
+        )
+    )
+    second_merged = load_workbook(Path(second_output["merged_excel_abs_path"])).active
+    assert second_merged.max_row == 3
+    assert second_merged.cell(row=2, column=1).value.strftime("%d/%m/%Y") == "04/02/2026"
+    assert second_merged.cell(row=3, column=1).value.strftime("%d/%m/%Y") == "04/02/2026"
+
+
+def test_local_backend_office_overwrite_does_not_collapse_multiple_same_datum_rows() -> None:
+    """Office overwrite should retain multiple reviewed rows sharing the same Datum."""
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+
+    req = CreateBatchRequest(
+        type="office",
+        run_date="15/02/2026",
+        inputs=[{"path": str(test_root / "dummy_1.pdf"), "category": "office"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    batch.review_rows = [
+        {
+            "row_id": "row-0001",
+            "category": "office",
+            "filename": "a.pdf",
+            "result": {"run_date": "15/02/2026", "type": "A", "sender": "Vendor-A", "receiver_ok": True},
+            "score": {},
+        },
+        {
+            "row_id": "row-0002",
+            "category": "office",
+            "filename": "b.pdf",
+            "result": {"run_date": "15/02/2026", "type": "B", "sender": "Vendor-B", "receiver_ok": False},
+            "score": {},
+        },
+        {
+            "row_id": "row-0003",
+            "category": "office",
+            "filename": "c.pdf",
+            "result": {"run_date": "15/02/2026", "type": "C", "sender": "Vendor-C", "receiver_ok": True},
+            "score": {},
+        },
+    ]
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    output = asyncio.run(backend.merge_batch(batch, {"mode": "overwrite"}))
+    merged_ws = load_workbook(Path(output["merged_excel_abs_path"])).active
+    assert merged_ws.max_row == 4
+    merged_senders = [merged_ws.cell(row=row_idx, column=3).value for row_idx in range(2, 5)]
+    assert merged_senders == ["Vendor-A", "Vendor-B", "Vendor-C"]
 
 
 def _openapi_contract_subset(spec: dict) -> dict:

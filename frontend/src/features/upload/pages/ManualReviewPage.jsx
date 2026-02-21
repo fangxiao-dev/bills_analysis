@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { AppFrame } from "../../../app/AppFrame";
 import { API_BASE_URL } from "../../../config/env";
@@ -8,32 +9,25 @@ import { StatusBadge } from "../components/StatusBadge";
 import { ReviewCategoryTable } from "../components/ReviewCategoryTable";
 import { useUploadFlowContext } from "../state/UploadFlowContext";
 
-const DEFAULT_MONTHLY_EXCEL_PATH = "outputs/monthly/current.xlsx";
+const DEFAULT_MONTHLY_EXCEL_PATH = "";
 const SOURCE_LOCAL_FILE = "local_file";
 const SOURCE_LARK_SHEET = "lark_sheet";
-
-const barColumns = [
-  { key: "filename", label: "File", readOnly: true },
-  { key: "store_name", label: "Store Name" },
-  { key: "brutto", label: "Brutto" },
-  { key: "netto", label: "Netto" },
-  { key: "run_date", label: "Run Date" },
-];
-
-const zbonColumns = [
-  { key: "filename", label: "File", readOnly: true },
-  { key: "brutto", label: "Brutto" },
-  { key: "netto", label: "Netto" },
-  { key: "run_date", label: "Run Date" },
-];
-
-const officeColumns = [
-  { key: "filename", label: "File", readOnly: true },
-  { key: "sender", label: "Sender" },
-  { key: "brutto", label: "Brutto" },
-  { key: "netto", label: "Netto" },
-  { key: "tax_id", label: "Tax ID" },
-  { key: "receiver", label: "Receiver" },
+const OFFICE_TYPE_OPTIONS = [
+  "asiatico",
+  "Fuji",
+  "JFC",
+  "Ramenlppin Europa",
+  "Lebensmittel&Bedarf",
+  "Miete",
+  "Strom&Gas&Internet",
+  "Bar Ausgabe",
+  "Personalkosten",
+  "Gerät&Geschirr",
+  "Reparatur",
+  "Getränke",
+  "Bank&SumUp&Linzen",
+  "Service&Andere",
+  "Unternehmen",
 ];
 
 /**
@@ -41,8 +35,43 @@ const officeColumns = [
  */
 export function ManualReviewPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { client, state, actions, flags } = useUploadFlowContext();
   const effectiveBatchType = state.batch?.type || state.batchType || "daily";
+
+  const barColumns = useMemo(
+    () => [
+      { key: "filename", label: t("review.table.file"), readOnly: true },
+      { key: "store_name", label: t("review.columns.store_name") },
+      { key: "brutto", label: t("review.columns.brutto") },
+      { key: "netto", label: t("review.columns.netto") },
+      { key: "run_date", label: t("review.columns.run_date") },
+    ],
+    [t],
+  );
+
+  const zbonColumns = useMemo(
+    () => [
+      { key: "filename", label: t("review.table.file"), readOnly: true },
+      { key: "brutto", label: t("review.columns.brutto") },
+      { key: "netto", label: t("review.columns.netto") },
+      { key: "run_date", label: t("review.columns.run_date") },
+    ],
+    [t],
+  );
+
+  const officeColumns = useMemo(
+    () => [
+      { key: "filename", label: t("review.table.file"), readOnly: true },
+      { key: "type", label: t("review.columns.type"), inputType: "select", options: OFFICE_TYPE_OPTIONS },
+      { key: "sender", label: t("review.columns.sender") },
+      { key: "brutto", label: t("review.columns.brutto") },
+      { key: "netto", label: t("review.columns.netto") },
+      { key: "tax_id", label: t("review.columns.tax_id") },
+      { key: "receiver_ok", label: t("review.columns.receiver_ok") },
+    ],
+    [t],
+  );
 
   const [draft, setDraft] = useState(() => buildDraftRowsFromFiles(state.files, state.runDate, null));
   const [localError, setLocalError] = useState("");
@@ -52,7 +81,13 @@ export function ManualReviewPage() {
   const [larkSheetLink, setLarkSheetLink] = useState("");
   const [mergeMode, setMergeMode] = useState("overwrite");
   const [monthlyPath, setMonthlyPath] = useState(state.mergeRequestPayload?.monthly_excel_path || DEFAULT_MONTHLY_EXCEL_PATH);
+  const [reportingError, setReportingError] = useState(false);
+  const [reportFeedback, setReportFeedback] = useState("");
+  const [submitFeedback, setSubmitFeedback] = useState("");
+  const [reportTypeErrorArmed, setReportTypeErrorArmed] = useState(false);
   const previewUrlCacheRef = useRef(new Map());
+  const reportFeedbackTimerRef = useRef(null);
+  const localExcelInputRef = useRef(null);
 
   useEffect(() => {
     setDraft((previous) => {
@@ -69,12 +104,20 @@ export function ManualReviewPage() {
     setMonthlyPath(state.mergeRequestPayload?.monthly_excel_path || DEFAULT_MONTHLY_EXCEL_PATH);
   }, [effectiveBatchType, state.mergeRequestPayload?.mode, state.mergeRequestPayload?.monthly_excel_path]);
 
+  useEffect(() => {
+    setReportTypeErrorArmed(false);
+  }, [state.batch?.batch_id]);
+
   useEffect(
     () => () => {
       for (const objectUrl of previewUrlCacheRef.current.values()) {
         URL.revokeObjectURL(objectUrl);
       }
       previewUrlCacheRef.current.clear();
+      if (reportFeedbackTimerRef.current) {
+        clearTimeout(reportFeedbackTimerRef.current);
+        reportFeedbackTimerRef.current = null;
+      }
     },
     [],
   );
@@ -100,39 +143,41 @@ export function ManualReviewPage() {
 
   const hasBatch = Boolean(state.batch?.batch_id);
   const hasSubmittedReview = state.reviewSubmitted || (state.batch?.review_rows_count || 0) > 0;
-  const submitDisabled = !hasBatch || state.batch?.status !== "review_ready" || flags.isBusy || !totalRows || !monthlyPath.trim();
+  const canReportTypeError = effectiveBatchType === "office" && reportTypeErrorArmed && hasBatch && !state.reportTypeErrorConsumed;
+  const shouldRenderReportTypeErrorButton = effectiveBatchType === "office" && hasBatch;
+  const reportTypeErrorDisabled = !canReportTypeError || reportingError || flags.isBusy;
+  const hasMergeSource = monthlyPathSource === SOURCE_LOCAL_FILE ? true : Boolean(larkSheetLink.trim() || monthlyPath.trim());
+  const submitDisabled = !hasBatch || flags.isBusy || !totalRows || !hasMergeSource;
   const showRetryMerge = state.batch?.status === "failed" && hasSubmittedReview;
 
   const onSubmit = useCallback(async () => {
     setLocalError("");
-
-    if (!monthlyPath.trim()) {
-      setLocalError("Monthly Excel Path is required.");
-      return;
-    }
+    setSubmitFeedback("");
 
     if (monthlyPathSource === SOURCE_LARK_SHEET && !isValidHttpUrl(larkSheetLink)) {
-      setLocalError("Please enter a valid Lark sheet URL.");
+      setLocalError(t("review.invalidLarkUrl"));
       return;
     }
 
     const rows = composeReviewRows(draft);
     if (!rows.length) {
-      setLocalError("No review rows available.");
+      setLocalError(t("review.noRows"));
       return;
     }
 
     const reviewOk = await actions.submitReviewOnly(rows);
     if (!reviewOk) {
-      setLocalError("Review submission failed. Please check system error and retry.");
+      setLocalError(t("review.submitFailed"));
       return;
     }
+    setReportTypeErrorArmed(true);
+    setSubmitFeedback(t("review.submitRepeatHint"));
 
-    let resolvedMonthlyPath = monthlyPath.trim();
+    let resolvedMonthlyPath = monthlyPathSource === SOURCE_LOCAL_FILE && !selectedLocalFile ? "" : monthlyPath.trim();
     if (monthlyPathSource === SOURCE_LOCAL_FILE && selectedLocalFile) {
       const uploadedPath = await actions.resolveMonthlyPathFromLocal(selectedLocalFile);
-      if (!uploadedPath) {
-        setLocalError("Local monthly excel source upload failed. Please retry.");
+      if (!uploadedPath || isNonRealPath(uploadedPath)) {
+        setLocalError(t("review.localUploadFailed"));
         return;
       }
       resolvedMonthlyPath = uploadedPath;
@@ -145,27 +190,79 @@ export function ManualReviewPage() {
       metadata: monthlyPathSource === SOURCE_LARK_SHEET ? { lark_sheet_link: larkSheetLink.trim() } : {},
     });
     if (!mergeOk) {
-      setLocalError("Review saved, but merge queue failed. Please retry.");
+      setLocalError(t("review.mergeQueueFailed"));
     }
-  }, [actions, draft, effectiveBatchType, larkSheetLink, mergeMode, monthlyPath, monthlyPathSource, selectedLocalFile]);
+  }, [actions, draft, effectiveBatchType, larkSheetLink, mergeMode, monthlyPath, monthlyPathSource, selectedLocalFile, t]);
 
   const onRetryMerge = useCallback(async () => {
     setLocalError("");
     const ok = await actions.retryMerge();
     if (!ok) {
-      setLocalError("Retry merge failed. Batch must be in failed state with submitted review rows.");
+      setLocalError(t("review.retryMergeFailed"));
     }
-  }, [actions]);
+  }, [actions, t]);
 
-  const onSelectLocalExcel = useCallback((event) => {
+  const onReportTypeError = useCallback(async () => {
+    if (reportingError) {
+      return;
+    }
+    setLocalError("");
+    setReportFeedback("");
+    setReportingError(true);
+
+    const payload = await actions.reportTypeError(state.batch?.batch_id);
+    if (!payload) {
+      setLocalError(t("review.reportError.failed"));
+      setReportingError(false);
+      return;
+    }
+    setReportTypeErrorArmed(false);
+
+    if (payload.status === "reported") {
+      setReportFeedback(t("review.reportError.reported", { count: payload.corrections?.length || 0 }));
+    } else {
+      setReportFeedback(t("review.reportError.skipped"));
+    }
+    if (reportFeedbackTimerRef.current) {
+      clearTimeout(reportFeedbackTimerRef.current);
+    }
+    reportFeedbackTimerRef.current = setTimeout(() => {
+      setReportFeedback("");
+      reportFeedbackTimerRef.current = null;
+    }, 4000);
+    setReportingError(false);
+  }, [actions, reportingError, state.batch?.batch_id, t]);
+
+  const onOpenMergedResult = useCallback(async () => {
+    setLocalError("");
+
+    const mergedHref = resolveMergedResultHref(state.batch);
+    if (!mergedHref) {
+      setLocalError(t("review.openMergedResultUnavailable"));
+      return;
+    }
+    window.open(mergedHref, "_blank", "noopener,noreferrer");
+  }, [state.batch, t]);
+
+  const onSelectLocalExcel = useCallback(async (event) => {
     const selected = event.target.files?.[0];
     if (!selected) {
       return;
     }
+    setLocalError("");
     setSelectedLocalFile(selected);
     setSelectedLocalFileName(selected.name);
-    setMonthlyPath(`local://${selected.name}`);
+    setMonthlyPath("");
     setMonthlyPathSource(SOURCE_LOCAL_FILE);
+
+    const resolvedPath = await actions.resolveMonthlyPathFromLocal(selected);
+    if (resolvedPath && !isNonRealPath(resolvedPath)) {
+      setMonthlyPath(resolvedPath);
+    }
+  }, [actions]);
+
+  const onTriggerLocalExcelPicker = useCallback(() => {
+    localExcelInputRef.current?.click();
   }, []);
 
   const onViewRow = useCallback(
@@ -195,49 +292,49 @@ export function ManualReviewPage() {
         return;
       }
 
-      setLocalError("Preview is unavailable for this row.");
+      setLocalError(t("review.previewUnavailable"));
     },
-    [state.batch?.inputs, state.files],
+    [state.batch?.inputs, state.files, t],
   );
 
   return (
     <AppFrame>
       <header className="app-topbar section-enter">
         <div>
-          <h1>Manual Review</h1>
-          <p>Edit extracted fields by category, then submit results in one step.</p>
+          <h1>{t("review.title")}</h1>
+          <p>{t("review.subtitle")}</p>
         </div>
         <div className="topbar-meta">
-          <span className="topbar-chip success">API Connected: v1 ({client.mode})</span>
+          <span className="topbar-chip success">{t("common.apiConnected", { mode: client.mode })}</span>
           <StatusBadge status={state.batch?.status} />
         </div>
       </header>
 
       <section className="kpi-strip section-enter">
         <article className="kpi-card">
-          <p className="kpi-label">Current Batch</p>
+          <p className="kpi-label">{t("review.currentBatch")}</p>
           <p className="kpi-value">{state.batch?.batch_id || "--"}</p>
         </article>
         <article className="kpi-card">
-          <p className="kpi-label">Rows</p>
+          <p className="kpi-label">{t("review.rows")}</p>
           <p className="kpi-value">{totalRows}</p>
         </article>
         <article className="kpi-card">
-          <p className="kpi-label">Review Rows Count</p>
+          <p className="kpi-label">{t("review.reviewRowsCount")}</p>
           <p className="kpi-value">{state.batch?.review_rows_count ?? 0}</p>
         </article>
       </section>
 
       <section className="ledger-shell space-y-4">
-        {!state.batch ? <AlertBanner tone="error" message="No batch found. Create a batch from Upload Management first." /> : null}
-        {state.batch && state.batch.status !== "review_ready" ? (
-          <AlertBanner message={`Batch is ${state.batch.status}. Submit is enabled only when status is review_ready.`} />
+        {!state.batch ? <AlertBanner tone="error" message={t("review.noBatch")} /> : null}
+        {state.batch && flags.isBusy ? (
+          <AlertBanner message={t("review.submitBlockedWhileProcessing", { status: state.batch.status })} />
         ) : null}
-        {state.reviewRowsLoading ? <AlertBanner message="Loading review rows from backend..." /> : null}
+        {state.reviewRowsLoading ? <AlertBanner message={t("review.loadingRows")} /> : null}
 
         <ReviewCategoryTable
-          title="BAR Review Items"
-          description="Daily BAR receipts: store name and amount verification."
+          title={t("review.section.barTitle")}
+          description={t("review.section.barDesc")}
           rows={draft.bar}
           columns={barColumns}
           onChangeCell={(rowId, key, value) => onChangeCell("bar", rowId, key, value)}
@@ -245,8 +342,8 @@ export function ManualReviewPage() {
         />
 
         <ReviewCategoryTable
-          title="ZBON Review Items"
-          description="Daily ZBON summary: amount and date verification."
+          title={t("review.section.zbonTitle")}
+          description={t("review.section.zbonDesc")}
           rows={draft.zbon}
           columns={zbonColumns}
           onChangeCell={(rowId, key, value) => onChangeCell("zbon", rowId, key, value)}
@@ -254,8 +351,8 @@ export function ManualReviewPage() {
         />
 
         <ReviewCategoryTable
-          title="OFFICE Review Items"
-          description="Office invoices: sender/tax metadata and amount verification."
+          title={t("review.section.officeTitle")}
+          description={t("review.section.officeDesc")}
           rows={draft.office}
           columns={officeColumns}
           onChangeCell={(rowId, key, value) => onChangeCell("office", rowId, key, value)}
@@ -264,8 +361,8 @@ export function ManualReviewPage() {
 
         <section className="ledger-card p-4">
           <header className="mb-3">
-            <h3 className="text-lg font-semibold">Confirm Results</h3>
-            <p className="mt-1 text-xs text-ledger-smoke">After finishing review edits, submit once to save review and queue merge.</p>
+            <h3 className="text-lg font-semibold">{t("review.confirmTitle")}</h3>
+            <p className="mt-1 text-sm text-ledger-smoke">{t("review.confirmDesc")}</p>
           </header>
 
           <div className="source-switch">
@@ -274,58 +371,71 @@ export function ManualReviewPage() {
               className={`source-switch-btn ${monthlyPathSource === SOURCE_LOCAL_FILE ? "active" : ""}`}
               onClick={() => setMonthlyPathSource(SOURCE_LOCAL_FILE)}
             >
-              from Local
+              {t("review.source.local")}
             </button>
             <button
               type="button"
               className={`source-switch-btn ${monthlyPathSource === SOURCE_LARK_SHEET ? "active" : ""}`}
               onClick={() => setMonthlyPathSource(SOURCE_LARK_SHEET)}
             >
-              from Lark
+              {t("review.source.lark")}
             </button>
           </div>
 
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
-              <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">Mode</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.mode")}</span>
               <select
                 className="review-cell-input"
                 value={effectiveBatchType === "daily" ? "overwrite" : mergeMode}
                 onChange={(event) => setMergeMode(event.target.value)}
                 disabled={effectiveBatchType === "daily"}
               >
-                <option value="overwrite">overwrite</option>
-                {effectiveBatchType === "office" ? <option value="append">append</option> : null}
+                <option value="overwrite">{t("review.modeOverwrite")}</option>
+                {effectiveBatchType === "office" ? <option value="append">{t("review.modeAppend")}</option> : null}
               </select>
-              {effectiveBatchType === "daily" ? <span className="text-xs">Daily mode uses overwrite only.</span> : null}
+              {effectiveBatchType === "daily" ? <span className="text-xs">{t("review.dailyModeFixed")}</span> : null}
             </label>
 
             <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
-              <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">Monthly Excel Path</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.monthlyPath")}</span>
               <input
                 type="text"
-                className="review-cell-input"
+                className={`review-cell-input ${monthlyPath.trim() ? "" : "text-slate-400"}`}
                 placeholder={DEFAULT_MONTHLY_EXCEL_PATH}
                 value={monthlyPath}
-                onChange={(event) => setMonthlyPath(event.target.value)}
+                readOnly
               />
             </label>
           </div>
 
           {monthlyPathSource === SOURCE_LOCAL_FILE ? (
             <div className="mt-3">
-              <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
-                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">Choose Local Excel</span>
-                <input type="file" accept=".xlsx,.xls" onChange={onSelectLocalExcel} />
-                {selectedLocalFileName ? <span className="text-xs text-ledger-smoke">Selected: {selectedLocalFileName}</span> : null}
-              </label>
+              <div className="flex flex-col gap-1 text-sm text-ledger-smoke">
+                <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.chooseLocalExcel")}</span>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="ghost" onClick={onTriggerLocalExcelPicker}>
+                    {t("review.chooseFile")}
+                  </Button>
+                  <span className="text-sm text-ledger-smoke">{selectedLocalFileName || t("review.noFileSelected")}</span>
+                </div>
+                <input
+                  ref={localExcelInputRef}
+                  type="file"
+                  aria-label={t("review.chooseLocalExcel")}
+                  accept=".xlsx,.xls"
+                  onChange={onSelectLocalExcel}
+                  className="sr-only"
+                />
+                {selectedLocalFileName ? <span className="text-xs text-ledger-smoke">{t("review.selectedFile", { name: selectedLocalFileName })}</span> : null}
+              </div>
             </div>
           ) : null}
 
           {monthlyPathSource === SOURCE_LARK_SHEET ? (
             <div className="mt-3">
               <label className="flex flex-col gap-1 text-sm text-ledger-smoke">
-                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">Lark Sheet Link</span>
+                <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.larkLink")}</span>
                 <input
                   type="text"
                   className="review-cell-input"
@@ -333,29 +443,44 @@ export function ManualReviewPage() {
                   value={larkSheetLink}
                   onChange={(event) => setLarkSheetLink(event.target.value)}
                 />
-                <span className="text-xs text-ledger-smoke">Coming Soon: full Lark source integration will be enabled with backend support.</span>
+                <span className="text-xs text-ledger-smoke">{t("review.larkComingSoon")}</span>
               </label>
             </div>
           ) : null}
 
           <div className="mt-3 flex flex-wrap gap-2">
             <Button type="button" variant="primary" onClick={() => void onSubmit()} disabled={submitDisabled}>
-              Submit
+              {t("common.submit")}
             </Button>
+            {shouldRenderReportTypeErrorButton ? (
+              <Button type="button" variant="danger" onClick={() => void onReportTypeError()} disabled={reportTypeErrorDisabled}>
+                {reportingError ? t("review.reportError.reporting") : t("review.reportError.action")}
+              </Button>
+            ) : null}
+            {state.batch?.status === "merged" ? (
+              <Button
+                type="button"
+                variant="success"
+                onClick={() => void onOpenMergedResult()}
+              >
+                {t("review.openMergedResult")}
+              </Button>
+            ) : null}
             <Button type="button" variant="ghost" onClick={() => navigate("/")}>
-              Back to Upload
+              {t("common.backToUpload")}
             </Button>
             {showRetryMerge ? (
               <Button type="button" variant="danger" onClick={() => void onRetryMerge()} disabled={flags.isBusy}>
-                Retry Merge
+                {t("review.retryMerge")}
               </Button>
             ) : null}
           </div>
         </section>
 
         {localError ? <AlertBanner tone="error" message={localError} /> : null}
+        {flags.isDone ? <AlertBanner message={t("review.doneAndResubmitHint")} /> : submitFeedback ? <AlertBanner message={submitFeedback} /> : null}
+        {reportFeedback ? <AlertBanner message={reportFeedback} /> : null}
         {state.systemError ? <AlertBanner tone="error" message={state.systemError} /> : null}
-        {flags.isDone ? <AlertBanner message="Merge finished. Workflow reached done state." /> : null}
       </section>
     </AppFrame>
   );
@@ -422,11 +547,13 @@ function buildDraftRowsFromFiles(files, runDate, previous) {
         id: file.id,
         category: "office",
         filename: file.name,
+        type: current?.type ?? "-",
         sender: current?.sender ?? "-",
         brutto: current?.brutto ?? "-",
         netto: current?.netto ?? "-",
         tax_id: current?.tax_id ?? "-",
-        receiver: current?.receiver ?? "-",
+        receiver_ok: current?.receiver_ok ?? "-",
+        receiver_address_ok: current?.receiver_address_ok ?? "-",
         score: current?.score ?? {},
         raw_result: current?.raw_result ?? {},
         preview_path: current?.preview_path ?? "",
@@ -498,11 +625,13 @@ function buildDraftRowsFromBackend(rows, runDate, previous) {
     if (category === "office") {
       draft.office.push({
         ...common,
+        type: current?.type ?? normalizeCellValue(result.type),
         sender: current?.sender ?? normalizeCellValue(result.sender),
         brutto: current?.brutto ?? normalizeCellValue(result.brutto),
         netto: current?.netto ?? normalizeCellValue(result.netto),
         tax_id: current?.tax_id ?? normalizeCellValue(result.tax_id),
-        receiver: current?.receiver ?? normalizeCellValue(result.receiver),
+        receiver_ok: current?.receiver_ok ?? normalizeReceiverOkValue(result.receiver_ok),
+        receiver_address_ok: current?.receiver_address_ok ?? normalizeReceiverOkValue(result.receiver_address_ok),
       });
     }
   });
@@ -530,11 +659,13 @@ function composeReviewRows(draft) {
         baseResult.netto = row.netto;
         baseResult.run_date = row.run_date;
       } else if (category === "office") {
+        baseResult.type = row.type;
         baseResult.sender = row.sender;
         baseResult.brutto = row.brutto;
         baseResult.netto = row.netto;
         baseResult.tax_id = row.tax_id;
-        baseResult.receiver = row.receiver;
+        baseResult.receiver_ok = parseReceiverOkValue(row.receiver_ok);
+        baseResult.receiver_address_ok = parseReceiverOkValue(row.receiver_address_ok);
       }
 
       const payload = {
@@ -604,6 +735,118 @@ function toPreviewHref(rawPath) {
 }
 
 /**
+ * Resolve merged result URL from backend batch payload.
+ * @param {Record<string, unknown> | null | undefined} batch
+ */
+function resolveMergedResultHref(batch) {
+  const mergeOutput = batch?.merge_output;
+  if (!mergeOutput || typeof mergeOutput !== "object") {
+    return "";
+  }
+
+  const directUrlKeys = ["output_url", "download_url", "url"];
+  for (const key of directUrlKeys) {
+    const value = mergeOutput[key];
+    if (typeof value === "string" && value.trim()) {
+      return toPreviewHref(value);
+    }
+  }
+
+  const absolutePathKeys = ["merged_excel_path", "output_abs_path", "absolute_path", "abs_path", "full_path"];
+  for (const key of absolutePathKeys) {
+    const value = mergeOutput[key];
+    if (typeof value === "string" && value.trim()) {
+      return toPreviewHref(value);
+    }
+  }
+
+  const outputPath = mergeOutput.output_path;
+  if (typeof outputPath === "string" && outputPath.trim()) {
+    if (isAbsolutePath(outputPath)) {
+      return toPreviewHref(outputPath);
+    }
+    const resolvedAbsolute = resolveAbsolutePathFromBatch(outputPath, batch);
+    if (resolvedAbsolute) {
+      return toPreviewHref(resolvedAbsolute);
+    }
+  }
+
+  return "";
+}
+
+/**
+ * Resolve one relative output path to local absolute path using known absolute hints.
+ * @param {string} relativePath
+ * @param {Record<string, unknown> | null | undefined} batch
+ */
+function resolveAbsolutePathFromBatch(relativePath, batch) {
+  const normalizedRelative = String(relativePath || "").trim();
+  if (!normalizedRelative || isAbsolutePath(normalizedRelative)) {
+    return "";
+  }
+
+  const normalizedRelativeSlash = normalizedRelative.replace(/\\/g, "/").replace(/^\/+/, "");
+  const outputAnchor = "/outputs/";
+  const anchorIndex = normalizedRelativeSlash.indexOf(outputAnchor.slice(1));
+  if (anchorIndex < 0) {
+    return "";
+  }
+
+  const tailFromOutputs = normalizedRelativeSlash.slice(anchorIndex + 1);
+  const absoluteInputs = Array.isArray(batch?.inputs)
+    ? batch.inputs
+        .map((item) => (typeof item?.path === "string" ? item.path.trim() : ""))
+        .filter((value) => value && isAbsolutePath(value))
+    : [];
+
+  for (const absoluteInput of absoluteInputs) {
+    const inputSlash = absoluteInput.replace(/\\/g, "/");
+    const outputsIndex = inputSlash.toLowerCase().indexOf(outputAnchor);
+    if (outputsIndex < 0) {
+      continue;
+    }
+    const prefix = inputSlash.slice(0, outputsIndex);
+    if (!prefix) {
+      continue;
+    }
+    const useBackslash = /^[a-zA-Z]:\//.test(inputSlash);
+    const candidate = useBackslash ? `${prefix}/${tailFromOutputs}`.replace(/\//g, "\\") : `${prefix}/${tailFromOutputs}`;
+    if (isAbsolutePath(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
+/**
+ * Check whether a path is absolute (URL, Windows absolute, Unix absolute, or file URL).
+ * @param {string} rawPath
+ */
+function isAbsolutePath(rawPath) {
+  const value = String(rawPath || "").trim();
+  if (!value) {
+    return false;
+  }
+  if (/^https?:\/\//i.test(value) || /^file:\/\//i.test(value)) {
+    return true;
+  }
+  if (/^[a-zA-Z]:\\/.test(value)) {
+    return true;
+  }
+  return value.startsWith("/");
+}
+
+/**
+ * Check whether a returned path is placeholder/mock instead of real backend path.
+ * @param {string | null | undefined} rawPath
+ */
+function isNonRealPath(rawPath) {
+  const value = String(rawPath || "").trim().toLowerCase();
+  return !value || value.startsWith("local://") || value.startsWith("mock://");
+}
+
+/**
  * Normalize input values to editable table cell text.
  * @param {unknown} value
  * @param {string} [fallback]
@@ -614,4 +857,36 @@ function normalizeCellValue(value, fallback = "-") {
   }
   const text = String(value).trim();
   return text || fallback;
+}
+
+/**
+ * Normalize receiver_ok value for editable office table.
+ * @param {unknown} value
+ */
+function normalizeReceiverOkValue(value) {
+  if (typeof value === "boolean") {
+    return value ? "True" : "False";
+  }
+  return normalizeCellValue(value);
+}
+
+/**
+ * Parse receiver_ok from user-edited cell text into boolean/nullable payload.
+ * @param {unknown} value
+ */
+function parseReceiverOkValue(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text || text === "-") {
+    return null;
+  }
+  if (["true", "yes", "1", "ok"].includes(text)) {
+    return true;
+  }
+  if (["false", "no", "0"].includes(text)) {
+    return false;
+  }
+  return null;
 }

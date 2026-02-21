@@ -1,5 +1,6 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "../../../shared/ui/Button";
+import { useTranslation } from "react-i18next";
 
 /**
  * Inline run-date picker using native date input popover.
@@ -9,13 +10,14 @@ import { Button } from "../../../shared/ui/Button";
  * }} props
  */
 export function RunDatePicker({ value, onChange }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   const isoValue = useMemo(() => toIsoDate(value), [value]);
 
   return (
     <div className="relative flex flex-col gap-1">
-      <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">Run Date</span>
+      <span className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">{t("upload.runDate")}</span>
       <button
         type="button"
         className="w-full rounded-md border border-ledger-line bg-white px-3 py-2 text-left text-sm text-ledger-ink"
@@ -23,7 +25,7 @@ export function RunDatePicker({ value, onChange }) {
       >
         {value}
       </button>
-      <span className="text-xs text-ledger-smoke">Default is today. Click to change.</span>
+      <span className="text-xs text-ledger-smoke">{t("upload.runDateHint")}</span>
 
       {open ? (
         <div className="absolute right-0 top-[calc(100%+0.4rem)] z-20 w-full rounded-md border border-ledger-line bg-white p-2 shadow-ledger">
@@ -45,10 +47,10 @@ export function RunDatePicker({ value, onChange }) {
                 setOpen(false);
               }}
             >
-              Today
+              {t("common.today")}
             </Button>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-              Close
+              {t("common.close")}
             </Button>
           </div>
         </div>

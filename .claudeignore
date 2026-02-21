@@ -1,0 +1,45 @@
+# .claudeignore
+# Patterns to exclude from Claude's context window for optimal performance
+
+# Large dependencies (already in .gitignore)
+.venv/
+env/
+venv/
+node_modules/
+frontend/node_modules/
+
+# Build artifacts
+outputs/
+data/samples/
+frontend/dist/
+*.pyc
+__pycache__/
+src/bills_analysis.egg-info/
+
+# Lock files (read separately if needed)
+uv.lock
+frontend/pnpm-lock.yaml
+
+# Legacy assistant configurations
+.codex/
+.agents/
+
+# Test coverage and caches
+.pytest_cache/
+frontend/coverage/
+.mypy_cache/
+.ruff_cache/
+.uv-cache
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment secrets (already in .gitignore)
+.env
+
+# Large JSON files (reference separately if needed)
+tests/openapi_v1_baseline.json
+
+# Editor metadata
+.vscode/

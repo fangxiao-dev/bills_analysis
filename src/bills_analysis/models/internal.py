@@ -32,12 +32,13 @@ class BatchRecord(StrictModel):
         """Build an initial queued batch record from create request."""
 
         now = datetime.now(UTC)
+        queued_inputs = [item.model_copy(update={"status": "queued", "error": None}) for item in req.inputs]
         return cls(
             batch_id=str(uuid4()),
             batch_type=req.type,
             status=BatchStatus.QUEUED,
             run_date=req.run_date,
-            inputs=req.inputs,
+            inputs=queued_inputs,
             metadata=req.metadata,
             created_at=now,
             updated_at=now,

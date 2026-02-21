@@ -6,6 +6,7 @@ import {
   parseCreateBatchUploadTaskResponse,
   parseMergeRequest,
   parseMergeTaskResponse,
+  parseReportErrorResponse,
   parseSubmitReviewRequest,
 } from "../../../contracts/v1.schema";
 
@@ -155,6 +156,20 @@ export function createRealUploadClient({ baseUrl, fetchImpl }) {
         fetchImpl,
       });
       return parseLocalMergeSourcePayload(data);
+    },
+
+    /**
+     * Report office type mismatch corrections for one reviewed batch.
+     * @param {string} batchId
+     */
+    async reportTypeError(batchId) {
+      const data = await requestJson({
+        baseUrl,
+        path: `/v1/batches/${batchId}/report-error`,
+        method: "POST",
+        fetchImpl,
+      });
+      return parseReportErrorResponse(data);
     },
   };
 }

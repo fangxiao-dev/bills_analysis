@@ -1,4 +1,5 @@
-﻿import { Button } from "../../../shared/ui/Button";
+import { Button } from "../../../shared/ui/Button";
+import { useTranslation } from "react-i18next";
 
 /**
  * Batch type switcher for Daily/Office workflow.
@@ -8,9 +9,11 @@
  * }} props
  */
 export function BatchTypeSelector({ value, onChange }) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">Batch Type</p>
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">{t("upload.batchType")}</p>
       <div className="flex gap-2">
         <Button
           type="button"
@@ -19,7 +22,7 @@ export function BatchTypeSelector({ value, onChange }) {
           aria-pressed={value === "daily"}
           className="min-w-20"
         >
-          Daily
+          {t("upload.daily")}
         </Button>
         <Button
           type="button"
@@ -28,7 +31,7 @@ export function BatchTypeSelector({ value, onChange }) {
           aria-pressed={value === "office"}
           className="min-w-20"
         >
-          Office
+          {t("upload.office")}
         </Button>
       </div>
     </div>

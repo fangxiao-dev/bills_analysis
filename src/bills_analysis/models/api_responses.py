@@ -34,6 +34,20 @@ class BatchResponse(StrictModel):
         error_obj = None
         if record.error:
             error_obj = ErrorInfo(code="BATCH_ERROR", message=record.error)
+        merge_output = dict(record.merge_output or {})
+        if merge_output:
+            download_path = f"/v1/batches/{record.batch_id}/merge-output/download"
+            abs_candidate = (
+                merge_output.get("merged_excel_abs_path")
+                or merge_output.get("output_abs_path")
+                or merge_output.get("merged_excel_path")
+                or merge_output.get("output_path")
+            )
+            if isinstance(abs_candidate, str) and abs_candidate.strip():
+                merge_output.setdefault("merged_excel_abs_path", abs_candidate)
+                merge_output.setdefault("output_abs_path", abs_candidate)
+                merge_output["merged_excel_path"] = download_path
+                merge_output["output_path"] = download_path
         return cls(
             batch_id=record.batch_id,
             type=record.batch_type,
@@ -42,7 +56,7 @@ class BatchResponse(StrictModel):
             inputs=record.inputs,
             artifacts=record.artifacts,
             review_rows_count=len(record.review_rows),
-            merge_output=record.merge_output,
+            merge_output=merge_output,
             error=error_obj,
             created_at=record.created_at,
             updated_at=record.updated_at,
@@ -124,6 +138,23 @@ class BatchReviewRowsResponse(StrictModel):
     batch_id: str
     status: BatchStatus
     rows: list[BatchReviewRow] = Field(default_factory=list)
+
+
+class ReportTypeCorrection(StrictModel):
+    """One office type correction captured from model-vs-review comparison."""
+
+    row_id: str
+    filename: str
+    original_type: str
+    corrected_type: str
+
+
+class ReportErrorResponse(StrictModel):
+    """Response envelope returned after reporting office type errors."""
+
+    schema_version: Literal["v1"] = SCHEMA_VERSION
+    status: Literal["reported", "skipped"]
+    corrections: list[ReportTypeCorrection] = Field(default_factory=list)
 
 
 class MergeSourceLocalResponse(StrictModel):

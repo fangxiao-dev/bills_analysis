@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { AppFrame } from "../../../app/AppFrame";
 import { BatchTypeSelector } from "../components/BatchTypeSelector";
 import { PdfDropzone } from "../components/PdfDropzone";
@@ -14,18 +15,42 @@ import { useUploadFlowContext } from "../state/UploadFlowContext";
  */
 export function BillUploadPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { client, state, actions, flags } = useUploadFlowContext();
 
   const canGoReview =
     state.batch &&
     (state.batch.status === "review_ready" || state.batch.status === "merging" || state.batch.status === "merged");
 
+  const isRefreshing =
+    state.phase === "creating" ||
+    state.phase === "tracking" ||
+    state.batch?.status === "queued" ||
+    state.batch?.status === "running" ||
+    state.batch?.status === "merging";
+
+  const statusMessage = (() => {
+    if (!state.batch) {
+      return "";
+    }
+    if (state.batch.status === "review_ready") {
+      return t("upload.reviewReadyNowHint");
+    }
+    if (state.batch.status === "merged") {
+      return t("upload.doneHint");
+    }
+    if (state.batch.status === "queued" || state.batch.status === "running" || state.batch.status === "merging" || state.phase === "creating" || state.phase === "tracking") {
+      return state.phase === "creating" ? t("upload.creatingHint") : t("upload.trackingHint");
+    }
+    return "";
+  })();
+
   const handleBatchTypeChange = (nextType) => {
     if (nextType === state.batchType) {
       return;
     }
     if (state.files.length) {
-      const shouldSwitch = window.confirm("Switching batch type will clear currently loaded files. Continue?");
+      const shouldSwitch = window.confirm(t("upload.switchTypeConfirm"));
       if (!shouldSwitch) {
         return;
       }
@@ -37,22 +62,22 @@ export function BillUploadPage() {
     <AppFrame>
       <header className="app-topbar section-enter">
         <div>
-          <h1>Upload Site</h1>
-          <p>Enterprise workflow for daily/office ingestion, validation, and merge tracking.</p>
+          <h1>{t("upload.title")}</h1>
+          <p>{t("upload.subtitle")}</p>
         </div>
         <div className="topbar-meta">
-          <span className="topbar-chip success">API Connected: v1 ({client.mode})</span>
-          <span className="topbar-chip">Type: {state.batchType.toUpperCase()}</span>
+          <span className="topbar-chip success">{t("common.apiConnected", { mode: client.mode })}</span>
+          <span className="topbar-chip">{t("common.type", { type: state.batchType.toUpperCase() })}</span>
         </div>
       </header>
 
       <section className="kpi-strip section-enter">
         <article className="kpi-card">
-          <p className="kpi-label">Queued Files</p>
+          <p className="kpi-label">{t("upload.queuedFiles")}</p>
           <p className="kpi-value">{state.files.length}</p>
         </article>
         <article className="kpi-card">
-          <p className="kpi-label">Backend Status</p>
+          <p className="kpi-label">{t("upload.backendStatus")}</p>
           <div className="mt-1">
             <StatusBadge status={state.batch?.status} />
           </div>
@@ -65,24 +90,24 @@ export function BillUploadPage() {
             <BatchTypeSelector value={state.batchType} onChange={handleBatchTypeChange} />
             <RunDatePicker value={state.runDate} onChange={actions.setRunDate} />
           </div>
-          <p className="mt-2 text-xs text-ledger-smoke">Switching Daily/Office clears currently loaded files.</p>
+          <p className="mt-2 text-xs text-ledger-smoke">{t("upload.switchTypeHint")}</p>
 
           {state.batchType === "daily" ? (
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <PdfDropzone
                 onFilesAdded={(files) => actions.addFiles(files, "bar")}
                 disabled={flags.isBusy}
-                title="BAR PDF"
-                description="Daily settlement BAR files (multiple files)."
-                buttonText="Add PDF"
+                title={t("upload.barTitle")}
+                description={t("upload.barDesc")}
+                buttonText={t("common.addPdf")}
                 allowMultiple
               />
               <PdfDropzone
                 onFilesAdded={(files) => actions.addFiles(files, "zbon")}
                 disabled={flags.isBusy}
-                title="ZBON PDF"
-                description="Daily ZBON file (single file only)."
-                buttonText="Add PDF"
+                title={t("upload.zbonTitle")}
+                description={t("upload.zbonDesc")}
+                buttonText={t("common.addPdf")}
                 allowMultiple={false}
               />
             </div>
@@ -91,9 +116,9 @@ export function BillUploadPage() {
               <PdfDropzone
                 onFilesAdded={(files) => actions.addFiles(files, "office")}
                 disabled={flags.isBusy}
-                title="OFFICE PDF"
-                description="Office invoices/bank statements."
-                buttonText="Add PDF"
+                title={t("upload.officeTitle")}
+                description={t("upload.officeDesc")}
+                buttonText={t("common.addPdf")}
               />
             </div>
           )}
@@ -105,8 +130,8 @@ export function BillUploadPage() {
           ) : null}
 
           <div className="mt-4">
-            <h2 className="mb-2 text-lg font-semibold">Items to Be Confirmed</h2>
-            <FileQueuePanel files={state.files} onRemove={actions.removeFile} />
+            <h2 className="mb-2 text-lg font-semibold">{t("upload.itemsToConfirm")}</h2>
+            <FileQueuePanel files={state.files} onRemove={actions.removeFile} batchInputs={state.batch?.inputs} />
           </div>
 
           {state.formError ? (
@@ -122,24 +147,48 @@ export function BillUploadPage() {
               onClick={() => void actions.submitBatch()}
               disabled={!flags.canSubmitBatch || !state.files.length}
             >
-              Create Batch
+              {t("upload.createBatch")}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => actions.retryPolling()} disabled={!state.batch || flags.isBusy}>
-              Retry Status Poll
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => actions.retryPolling()}
+              disabled={!state.batch}
+              aria-label={t("upload.retryPoll")}
+              title={t("upload.retryPoll")}
+              className="px-2"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+                className={isRefreshing ? "retry-icon-spin" : ""}
+              >
+                <path
+                  d="M20 12a8 8 0 1 1-2.34-5.66M20 4v6h-6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </Button>
-            <Button type="button" variant="ghost" onClick={() => navigate("/manual-review")} disabled={!canGoReview}>
-              Go to Manual Review
+            <Button type="button" variant={canGoReview ? "success" : "ghost"} onClick={() => navigate("/manual-review")} disabled={!canGoReview}>
+              {t("upload.goManualReview")}
             </Button>
           </div>
 
-          {state.batch && !canGoReview ? (
+          {state.batch && !canGoReview && !statusMessage ? (
             <div className="mt-3">
-              <AlertBanner message={`Batch is ${state.batch.status}. Manual review opens when status reaches review_ready.`} />
+              <AlertBanner message={t("upload.reviewReadyHint", { status: state.batch.status })} />
             </div>
           ) : null}
+          {statusMessage ? <div className="mt-3"><AlertBanner message={statusMessage} /></div> : null}
 
-          {state.systemError ? <AlertBanner tone="error" message={state.systemError} /> : null}
-          {flags.isDone ? <AlertBanner message="Merge finished. Workflow reached done state." /> : null}
+          {state.systemError ? <div className="mt-3"><AlertBanner tone="error" message={state.systemError} /></div> : null}
+          {flags.isDone && !statusMessage ? <div className="mt-3"><AlertBanner message={t("upload.doneHint")} /></div> : null}
         </section>
       </section>
     </AppFrame>

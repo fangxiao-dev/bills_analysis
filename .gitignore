@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .vscode/
+.uv-cache
 src/bills_analysis.egg-info/
 # Virtual environments
 .venv/
@@ -21,19 +22,26 @@ Thumbs.db
 # Local data (keep samples out of VCS unless intentional)
 uv.lock
 .env
+.env.docker
 data/**
 
 # ignore
 outputs/*
+dataset/*
 data/samples/*
 
 # SKILLS
 # AI assistant configurations (symbolic links, not real content)
 .codex
-.claude
+.claude/*
+!.claude/rules
+
 .agents/*
 !.agents/skills/
 .agents/skills/*
-!.agents/skills/context-handoff/
-.agents/skills/context-handoff/*
-!.agents/skills/context-handoff/SKILL.md
+!.agents/skills/cross-worktree-sync/
+!.agents/skills/task-worktree-lifecycle/
+!.agents/skills/
+!.agents/docs/
+.agents/docs/*
+!.agents/docs/wt-pm-workflow.md
