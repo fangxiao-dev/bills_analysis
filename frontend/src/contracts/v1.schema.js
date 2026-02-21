@@ -132,6 +132,23 @@ const createBatchUploadTaskResponseSchema = z
   })
   .strict();
 
+const reportTypeCorrectionSchema = z
+  .object({
+    row_id: z.string(),
+    filename: z.string(),
+    original_type: z.string(),
+    corrected_type: z.string(),
+  })
+  .strict();
+
+const reportErrorResponseSchema = z
+  .object({
+    schema_version: schemaVersionSchema.default("v1"),
+    status: z.enum(["reported", "skipped"]),
+    corrections: z.array(reportTypeCorrectionSchema),
+  })
+  .strict();
+
 /**
  * Validate and normalize CreateBatchRequest payload.
  * @param {unknown} payload
@@ -189,6 +206,14 @@ export function parseCreateBatchUploadTaskResponse(payload) {
 }
 
 /**
+ * Validate report-error API response payload.
+ * @param {unknown} payload
+ */
+export function parseReportErrorResponse(payload) {
+  return reportErrorResponseSchema.parse(payload);
+}
+
+/**
  * Runtime helper for date format validation.
  * @param {string} value
  */
@@ -209,4 +234,6 @@ export {
   batchListResponseSchema,
   mergeTaskResponseSchema,
   createBatchUploadTaskResponseSchema,
+  reportTypeCorrectionSchema,
+  reportErrorResponseSchema,
 };

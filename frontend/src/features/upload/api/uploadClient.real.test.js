@@ -143,4 +143,32 @@ describe("uploadClient.real", () => {
     const payload = await client.uploadMergeSourceLocal("b-1", file);
     expect(payload.monthly_excel_path).toContain("outputs/monthly/current.xlsx");
   });
+
+  it("calls report-error endpoint and returns correction summary", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          schema_version: "v1",
+          status: "reported",
+          corrections: [
+            {
+              row_id: "row-0001",
+              filename: "office.pdf",
+              original_type: "Service&Andere",
+              corrected_type: "Miete",
+            },
+          ],
+        }),
+    });
+    const client = createRealUploadClient({ baseUrl: "http://127.0.0.1:8000", fetchImpl });
+
+    const payload = await client.reportTypeError("b-1");
+    expect(payload.status).toBe("reported");
+    expect(payload.corrections).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/batches/b-1/report-error",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
 });

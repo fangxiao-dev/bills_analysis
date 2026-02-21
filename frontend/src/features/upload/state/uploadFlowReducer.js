@@ -41,6 +41,7 @@ export const initialUploadState = {
   batch: null,
   mergeTask: null,
   reviewSubmitted: false,
+  reportTypeErrorConsumed: false,
   mergeRequested: false,
   lastMergeTaskId: null,
   mergeRequestPayload: {
@@ -74,6 +75,7 @@ export function uploadFlowReducer(state, action) {
         batch: null,
         mergeTask: null,
         reviewSubmitted: false,
+        reportTypeErrorConsumed: false,
         mergeRequested: false,
         lastMergeTaskId: null,
         mergeRequestPayload: {
@@ -146,6 +148,7 @@ export function uploadFlowReducer(state, action) {
         batch: action.batch,
         mergeTask: null,
         reviewSubmitted: false,
+        reportTypeErrorConsumed: false,
         mergeRequested: false,
         lastMergeTaskId: null,
         systemError: "",
@@ -205,7 +208,14 @@ export function uploadFlowReducer(state, action) {
         phase: mapStatusToPhase(action.batch.status),
         batch: action.batch,
         reviewSubmitted: true,
+        reportTypeErrorConsumed: false,
         systemError: "",
+      };
+
+    case "REPORT_TYPE_ERROR_SUCCESS":
+      return {
+        ...state,
+        reportTypeErrorConsumed: action.payload?.status === "reported" ? true : state.reportTypeErrorConsumed,
       };
 
     case "REVIEW_SUBMIT_FAILURE":

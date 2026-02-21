@@ -29,6 +29,7 @@ from bills_analysis.models.api_responses import (
     CreateBatchUploadTaskResponse,
     MergeSourceLocalResponse,
     MergeTaskResponse,
+    ReportErrorResponse,
 )
 from bills_analysis.models.common import InputFile
 from bills_analysis.models.enums import BatchType
@@ -398,6 +399,19 @@ async def upload_local_merge_source(
         monthly_excel_path=str(saved_path.resolve()),
         created_at=batch.updated_at,
     )
+
+
+@app.post("/v1/batches/{batch_id}/report-error", response_model=ReportErrorResponse)
+async def report_type_error(batch_id: str) -> ReportErrorResponse:
+    """Report reviewed office type corrections and snapshot related batch artifacts."""
+
+    try:
+        payload = await container.service.report_type_error(batch_id)
+        return ReportErrorResponse(**payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="batch not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/v1/batches/{batch_id}/merge", response_model=MergeTaskResponse)

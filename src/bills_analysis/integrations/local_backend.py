@@ -269,7 +269,12 @@ class LocalPipelineBackend:
                     model_id=model_id,
                     return_fields=True,
                 )
-                self._fill_office_row(row, azure_result, office_fields)
+                self._fill_office_row(
+                    row,
+                    azure_result,
+                    office_fields,
+                    batch_out_dir=archive_root.parent,
+                )
             else:
                 azure_result = _analyze_pdf_with_azure(
                     source_path,
@@ -301,6 +306,8 @@ class LocalPipelineBackend:
         row: dict[str, Any],
         azure_result: dict[str, Any],
         office_fields: dict[str, Any],
+        *,
+        batch_out_dir: Path,
     ) -> None:
         """Map Azure invoice fields and optional Office semantics into review row."""
 
@@ -313,6 +320,11 @@ class LocalPipelineBackend:
 
         try:
             distilled = _clean_invoice_fields(office_fields)
+            self._persist_office_di_fields(
+                batch_out_dir=batch_out_dir,
+                row_id=str(row.get("row_id") or ""),
+                distilled_fields=distilled,
+            )
             office_info = _extract_office_semantics(distilled)
             row["result"]["type"] = office_info.get("purpose")
             row["result"]["sender"] = office_info.get("sender")
@@ -322,6 +334,24 @@ class LocalPipelineBackend:
             row["result"]["receiver_address_ok"] = _resolve_receiver_address_ok(office_info)
         except Exception as exc:
             row["semantic_error"] = str(exc)
+
+    def _persist_office_di_fields(
+        self,
+        *,
+        batch_out_dir: Path,
+        row_id: str,
+        distilled_fields: dict[str, Any],
+    ) -> None:
+        """Persist per-row distilled DI fields for prompt-tuning dataset collection."""
+
+        normalized_row_id = row_id.strip() or "row-unknown"
+        di_dir = batch_out_dir / "di_fields"
+        di_dir.mkdir(parents=True, exist_ok=True)
+        target_path = di_dir / f"{normalized_row_id}.json"
+        target_path.write_text(
+            json.dumps(distilled_fields, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     def _row_has_external_failure(self, row: dict[str, Any]) -> bool:
         """Return whether row contains extraction/semantic external-call failures."""
