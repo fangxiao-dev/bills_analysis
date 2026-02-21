@@ -29,7 +29,7 @@
   "upload.daily": "Daily",
   "upload.office": "Office",
   "upload.runDate": "Run Date",
-  "upload.runDateHint": "Default is today. Click to change.",
+  "upload.runDateHint": "Default is today. Click calendar to choose.",
   "upload.switchTypeHint": "Switching Daily/Office clears currently loaded files.",
   "upload.switchTypeConfirm": "Switching batch type will clear currently loaded files. Continue?",
   "upload.barTitle": "BAR PDF",

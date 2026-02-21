@@ -29,7 +29,7 @@
   "upload.daily": "Täglich",
   "upload.office": "Office",
   "upload.runDate": "Ausführungsdatum",
-  "upload.runDateHint": "Standard ist heute. Klicken zum Ändern.",
+  "upload.runDateHint": "Standard ist heute. Kalender klicken und Datum wählen.",
   "upload.switchTypeHint": "Beim Wechsel zwischen Daily/Office werden geladene Dateien gelöscht.",
   "upload.switchTypeConfirm": "Beim Wechsel des Batch-Typs werden geladene Dateien gelöscht. Fortfahren?",
   "upload.barTitle": "BAR PDF",
