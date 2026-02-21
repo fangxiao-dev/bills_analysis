@@ -60,6 +60,8 @@
   "upload.queue.itemStatus.skipped": "übersprungen",
   "upload.queue.skipReasonExceeded": "Maximale Seitenanzahl {{limit}} überschritten. Batch zuerst einreichen, dann in der Prüfung manuell eingeben.",
   "upload.queue.skipReasonFallback": "Datei bei automatischer Extraktion übersprungen. Batch zuerst einreichen, dann in der Prüfung manuell eingeben.",
+  "upload.queue.failedReasonAria": "Fehlergrund anzeigen",
+  "upload.queue.failedReasonFallback": "Diese Datei ist bei der Verarbeitung fehlgeschlagen. Bitte Backend-Logs prüfen.",
   "upload.dropzoneDefaultTitle": "PDFs hier ablegen oder lokal auswählen.",
   "upload.dropzoneDefaultDesc": "Für M1 sind nur .pdf Dateien erlaubt.",
   "upload.dropzoneChoose": "PDF-Dateien wählen",

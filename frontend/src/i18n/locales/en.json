@@ -60,6 +60,8 @@
   "upload.queue.itemStatus.skipped": "skipped",
   "upload.queue.skipReasonExceeded": "Exceeded max page limit {{limit}}. Submit the batch first, then manually enter in review.",
   "upload.queue.skipReasonFallback": "Skipped for auto extraction. Submit the batch first, then manually enter in review.",
+  "upload.queue.failedReasonAria": "View failure reason",
+  "upload.queue.failedReasonFallback": "This file failed during processing. Please check backend logs for details.",
   "upload.dropzoneDefaultTitle": "Drop PDFs here or browse from local disk.",
   "upload.dropzoneDefaultDesc": "Only .pdf files are accepted for M1.",
   "upload.dropzoneChoose": "Choose PDF Files",

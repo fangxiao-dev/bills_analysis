@@ -732,7 +732,7 @@ def test_local_backend_calls_preprocess_and_extract(monkeypatch: pytest.MonkeyPa
     test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
     test_root.mkdir(parents=True, exist_ok=True)
     src_pdf = test_root / "input.pdf"
-    src_pdf.write_bytes(b"%PDF-1.4\nsource\n%%EOF")
+    src_pdf.write_bytes(b"%PDF-1.4\nsource\n%%EOF\n" + (b"0" * (2 * 1024 * 1024)))
     req = CreateBatchRequest(
         type="daily",
         run_date="04/02/2026",
@@ -953,6 +953,381 @@ def test_local_backend_skips_over_max_pages_and_keeps_empty_review_row(monkeypat
     assert isinstance(row.get("skip_reason"), str)
     assert "page_count=6" in row["skip_reason"]
     assert "max_pages=4" in row["skip_reason"]
+
+
+def test_local_backend_limits_extract_concurrency_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Extraction branch should honor configured global concurrency limit across files."""
+
+    active_extract = 0
+    max_active_extract = 0
+
+    def fake_page_count(pdf_path: Path) -> int | None:
+        """Always return valid in-range page count so extraction is scheduled."""
+
+        return 1
+
+    def fake_compress(pdf_path: Path, *, dest_dir: Path, dpi: int, name_suffix: str) -> Path:
+        """Stub compression helper returning deterministic archive path."""
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        archived = dest_dir / f"{pdf_path.stem}_{name_suffix}.pdf"
+        archived.write_bytes(b"%PDF-1.4\narchived\n%%EOF")
+        return archived
+
+    def fake_analyze(pdf_path: Path, *, model_id: str, return_fields: bool) -> Any:
+        """Track extraction overlap and return deterministic payload."""
+
+        nonlocal active_extract, max_active_extract
+        active_extract += 1
+        max_active_extract = max(max_active_extract, active_extract)
+        try:
+            import time
+
+            time.sleep(0.12)
+            return {
+                "store_name": "Demo",
+                "brutto": 1.23,
+                "netto": 1.0,
+                "total_tax": 0.23,
+                "confidence_store_name": 0.9,
+                "confidence_brutto": 0.9,
+                "confidence_netto": 0.9,
+                "confidence_total_tax": 0.9,
+            }
+        finally:
+            active_extract -= 1
+
+    monkeypatch.setenv("BACKEND_EXTRACT_CONCURRENCY", "1")
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._safe_pdf_page_count", fake_page_count)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._compress_pdf_for_archive", fake_compress)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._analyze_pdf_with_azure", fake_analyze)
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    pdfs = []
+    for idx in range(3):
+        path = test_root / f"file_{idx + 1}.pdf"
+        path.write_bytes(b"%PDF-1.4\nsource\n%%EOF")
+        pdfs.append(path)
+
+    req = CreateBatchRequest(
+        type="daily",
+        run_date="04/02/2026",
+        inputs=[{"path": str(path), "category": "zbon"} for path in pdfs],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    output = asyncio.run(backend.process_batch(batch))
+
+    assert len(output["review_rows"]) == 3
+    assert output["processing_summary"]["extracted_count"] == 3
+    assert max_active_extract == 1
+
+
+def test_local_backend_runs_extract_and_compress_in_parallel(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Per-file compression and extraction should overlap when page count allows extraction."""
+
+    def fake_page_count(pdf_path: Path) -> int | None:
+        """Always return valid in-range page count so extraction is scheduled."""
+
+        return 1
+
+    def fake_compress(pdf_path: Path, *, dest_dir: Path, dpi: int, name_suffix: str) -> Path:
+        """Slow compression stub used to assert branch overlap."""
+
+        import time
+
+        time.sleep(0.20)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        archived = dest_dir / f"{pdf_path.stem}_{name_suffix}.pdf"
+        archived.write_bytes(b"%PDF-1.4\narchived\n%%EOF")
+        return archived
+
+    def fake_analyze(pdf_path: Path, *, model_id: str, return_fields: bool) -> Any:
+        """Slow extraction stub used to assert branch overlap."""
+
+        import time
+
+        time.sleep(0.20)
+        return {
+            "store_name": "Demo",
+            "brutto": 9.99,
+            "netto": 8.0,
+            "total_tax": 1.99,
+            "confidence_store_name": 0.9,
+            "confidence_brutto": 0.9,
+            "confidence_netto": 0.9,
+            "confidence_total_tax": 0.9,
+        }
+
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._safe_pdf_page_count", fake_page_count)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._compress_pdf_for_archive", fake_compress)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._analyze_pdf_with_azure", fake_analyze)
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    src_pdf = test_root / "input.pdf"
+    src_pdf.write_bytes(b"%PDF-1.4\nsource\n%%EOF\n" + (b"0" * (2 * 1024 * 1024)))
+    req = CreateBatchRequest(
+        type="daily",
+        run_date="04/02/2026",
+        inputs=[{"path": str(src_pdf), "category": "zbon"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    import time
+
+    started_at = time.perf_counter()
+    output = asyncio.run(backend.process_batch(batch))
+    elapsed = time.perf_counter() - started_at
+
+    assert len(output["review_rows"]) == 1
+    assert output["processing_summary"]["extracted_count"] == 1
+    assert elapsed < 0.34
+
+
+def test_local_backend_does_not_fail_file_by_timeout_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """File processing should not be forcibly failed by BACKEND_FILE_TIMEOUT_SEC in queueing scenarios."""
+
+    def fake_page_count(pdf_path: Path) -> int | None:
+        """Always return valid in-range page count so extraction is scheduled."""
+
+        return 1
+
+    def fake_compress(pdf_path: Path, *, dest_dir: Path, dpi: int, name_suffix: str) -> Path:
+        """Slow compression to simulate queueing and long processing."""
+
+        import time
+
+        time.sleep(0.15)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        archived = dest_dir / f"{pdf_path.stem}_{name_suffix}.pdf"
+        archived.write_bytes(b"%PDF-1.4\narchived\n%%EOF")
+        return archived
+
+    def fake_analyze(pdf_path: Path, *, model_id: str, return_fields: bool) -> Any:
+        """Slow extract stub that still returns successful payload."""
+
+        import time
+
+        time.sleep(0.15)
+        return {
+            "store_name": "Demo",
+            "brutto": 7.77,
+            "netto": 6.0,
+            "total_tax": 1.77,
+            "confidence_store_name": 0.9,
+            "confidence_brutto": 0.9,
+            "confidence_netto": 0.9,
+            "confidence_total_tax": 0.9,
+        }
+
+    monkeypatch.setenv("BACKEND_FILE_TIMEOUT_SEC", "0.01")
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._safe_pdf_page_count", fake_page_count)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._compress_pdf_for_archive", fake_compress)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._analyze_pdf_with_azure", fake_analyze)
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    src_pdf = test_root / "slow.pdf"
+    src_pdf.write_bytes(b"%PDF-1.4\nsource\n%%EOF")
+    req = CreateBatchRequest(
+        type="daily",
+        run_date="04/02/2026",
+        inputs=[{"path": str(src_pdf), "category": "zbon"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    output = asyncio.run(backend.process_batch(batch))
+    assert output["processing_summary"]["extracted_count"] == 1
+    row = output["review_rows"][0]
+    assert row["filename"] == "slow.pdf"
+    assert row["result"]["brutto"] == 7.77
+
+
+def test_local_backend_marks_skip_compress_and_copies_archive(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Small files under compression-skip threshold should bypass compression and use direct archive copy."""
+
+    called: dict[str, int] = {"compress": 0, "analyze": 0}
+
+    def fake_page_count(pdf_path: Path) -> int | None:
+        """Keep page count in-range so DI is still executed."""
+
+        return 1
+
+    def fake_compress(pdf_path: Path, *, dest_dir: Path, dpi: int, name_suffix: str) -> Path:
+        """Compression should not be called when skip-compress marker is active."""
+
+        called["compress"] += 1
+        raise AssertionError("compression should be skipped for under-threshold files")
+
+    def fake_analyze(pdf_path: Path, *, model_id: str, return_fields: bool) -> Any:
+        """Return deterministic extraction payload for non-skipped DI path."""
+
+        called["analyze"] += 1
+        return {
+            "store_name": "Demo",
+            "brutto": 10.0,
+            "netto": 8.0,
+            "total_tax": 2.0,
+            "confidence_store_name": 0.9,
+            "confidence_brutto": 0.9,
+            "confidence_netto": 0.9,
+            "confidence_total_tax": 0.9,
+        }
+
+    monkeypatch.setenv("BACKEND_COMPRESS_SKIP_MB", "1")
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._safe_pdf_page_count", fake_page_count)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._compress_pdf_for_archive", fake_compress)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._analyze_pdf_with_azure", fake_analyze)
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    src_pdf = test_root / "small_input.pdf"
+    src_pdf.write_bytes(b"%PDF-1.4\nsource\n%%EOF\n" + (b"0" * 2048))
+    req = CreateBatchRequest(
+        type="daily",
+        run_date="04/02/2026",
+        inputs=[{"path": str(src_pdf), "category": "zbon"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    output = asyncio.run(backend.process_batch(batch))
+    row = output["review_rows"][0]
+    results_payload = json.loads(Path(output["artifacts"]["result_json_path"]).read_text(encoding="utf-8"))
+    stored_row = results_payload["items"][0]
+
+    assert called["compress"] == 0
+    assert called["analyze"] == 1
+    assert output["processing_summary"]["extracted_count"] == 1
+    assert row["skip_reason"] is None
+    assert Path(str(row["preview_path"])).exists()
+    assert "skip-compress" in list(stored_row.get("markers") or [])
+
+
+def test_local_backend_marks_dual_skip_di_and_skip_compress(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Files can carry both skipped-di and skip-compress markers with DI skipped and archive preserved."""
+
+    called: dict[str, int] = {"compress": 0, "analyze": 0}
+
+    def fake_page_count(pdf_path: Path) -> int | None:
+        """Return over-limit page count so DI path is skipped."""
+
+        return 7
+
+    def fake_compress(pdf_path: Path, *, dest_dir: Path, dpi: int, name_suffix: str) -> Path:
+        """Compression should not run when skip-compress is active."""
+
+        called["compress"] += 1
+        raise AssertionError("compression should be skipped when skip-compress marker exists")
+
+    def fake_analyze(pdf_path: Path, *, model_id: str, return_fields: bool) -> Any:
+        """DI should be skipped when skipped-di marker is active."""
+
+        called["analyze"] += 1
+        raise AssertionError("azure analyze should be skipped when page count exceeds max_pages")
+
+    monkeypatch.setenv("BACKEND_COMPRESS_SKIP_MB", "1")
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._safe_pdf_page_count", fake_page_count)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._compress_pdf_for_archive", fake_compress)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._analyze_pdf_with_azure", fake_analyze)
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    src_pdf = test_root / "large_over_pages.pdf"
+    src_pdf.write_bytes(b"%PDF-1.4\nsource\n%%EOF\n" + (b"0" * (2 * 1024 * 1024)))
+    req = CreateBatchRequest(
+        type="daily",
+        run_date="04/02/2026",
+        inputs=[{"path": str(src_pdf), "category": "zbon"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    output = asyncio.run(backend.process_batch(batch))
+    row = output["review_rows"][0]
+    results_payload = json.loads(Path(output["artifacts"]["result_json_path"]).read_text(encoding="utf-8"))
+    stored_row = results_payload["items"][0]
+
+    assert called["compress"] == 0
+    assert called["analyze"] == 0
+    assert row["skip_reason"] is not None
+    assert "max_pages=4" in str(row["skip_reason"])
+    assert Path(str(row["preview_path"])).exists()
+    markers = list(stored_row.get("markers") or [])
+    assert "skipped-di" in markers
+    assert "skip-compress" in markers
+
+
+def test_local_backend_uses_compressed_pdf_as_di_input_for_very_large_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Files over DI-compressed threshold should run DI on compressed artifact path."""
+
+    called: dict[str, Any] = {"compress": 0, "analyze_paths": []}
+
+    def fake_page_count(pdf_path: Path) -> int | None:
+        """Keep page count in-range so extraction runs."""
+
+        return 1
+
+    def fake_compress(pdf_path: Path, *, dest_dir: Path, dpi: int, name_suffix: str) -> Path:
+        """Produce deterministic compressed archive artifact path."""
+
+        called["compress"] += 1
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        archived = dest_dir / f"{pdf_path.stem}_{name_suffix}.pdf"
+        archived.write_bytes(b"%PDF-1.4\ncompressed\n%%EOF")
+        return archived
+
+    def fake_analyze(pdf_path: Path, *, model_id: str, return_fields: bool) -> Any:
+        """Capture DI input path and return deterministic extraction payload."""
+
+        called["analyze_paths"].append(str(pdf_path))
+        return {
+            "store_name": "Demo",
+            "brutto": 11.0,
+            "netto": 9.0,
+            "total_tax": 2.0,
+            "confidence_store_name": 0.9,
+            "confidence_brutto": 0.9,
+            "confidence_netto": 0.9,
+            "confidence_total_tax": 0.9,
+        }
+
+    monkeypatch.setenv("BACKEND_COMPRESS_SKIP_MB", "1")
+    monkeypatch.setenv("BACKEND_DI_COMPRESSED_INPUT_MB", "3")
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._safe_pdf_page_count", fake_page_count)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._compress_pdf_for_archive", fake_compress)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._analyze_pdf_with_azure", fake_analyze)
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    src_pdf = test_root / "very_large.pdf"
+    src_pdf.write_bytes(b"%PDF-1.4\nsource\n%%EOF\n" + (b"0" * (3 * 1024 * 1024 + 4096)))
+    req = CreateBatchRequest(
+        type="daily",
+        run_date="04/02/2026",
+        inputs=[{"path": str(src_pdf), "category": "zbon"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    output = asyncio.run(backend.process_batch(batch))
+    assert called["compress"] == 1
+    assert len(called["analyze_paths"]) == 1
+    analyzed = Path(called["analyze_paths"][0])
+    assert analyzed != src_pdf
+    assert "archive" in str(analyzed).lower()
+    assert output["processing_summary"]["extracted_count"] == 1
 
 
 def test_local_backend_merge_builds_non_empty_daily_validated_excel() -> None:
