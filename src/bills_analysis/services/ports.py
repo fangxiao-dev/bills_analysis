@@ -1,6 +1,7 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, Protocol
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol
 
 from bills_analysis.models.internal import BatchRecord, QueueTask
 

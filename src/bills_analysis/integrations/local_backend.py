@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -116,6 +117,31 @@ def _resolve_receiver_address_ok(office_info: dict[str, Any]) -> bool | None:
     return match_receiver_address(address_text, expected_address)
 
 
+def _copy_pdf_to_organized_dir(
+    *,
+    compressed_pdf: Path,
+    output_root: Path,
+    category: str,
+    run_date: str,
+    extracted_result: dict[str, Any],
+) -> Path:
+    """Copy one compressed PDF into legacy-organized directory with legacy naming rules."""
+
+    from bills_analysis.integrations.azure_pipeline_adapter import (
+        get_archive_subdir_name,
+        get_compressed_pdf_name,
+    )
+
+    organized_dir = output_root / "organized" / get_archive_subdir_name(run_date, category)
+    organized_dir.mkdir(parents=True, exist_ok=True)
+    target_name = get_compressed_pdf_name(category, extracted_result, run_date) or compressed_pdf.name
+    target_path = organized_dir / target_name
+    if target_path.resolve() == compressed_pdf.resolve():
+        return target_path
+    shutil.copy2(compressed_pdf, target_path)
+    return target_path
+
+
 class LocalPipelineBackend:
     """Local backend adapter that executes preprocess + extraction flow."""
 
@@ -137,7 +163,8 @@ class LocalPipelineBackend:
         out_dir.mkdir(parents=True, exist_ok=True)
         archive_root = out_dir / "archive"
         archive_root.mkdir(parents=True, exist_ok=True)
-
+        organized_root = out_dir / "organized"
+        organized_root.mkdir(parents=True, exist_ok=True)
         now = datetime.now(UTC).isoformat()
         results_path = out_dir / "results.json"
         review_path = out_dir / "review_rows.json"
@@ -195,6 +222,7 @@ class LocalPipelineBackend:
                 "result_json_path": str(results_path),
                 "review_json_path": str(review_path),
                 "archive_root": str(archive_root),
+                "organized_root": str(organized_root),
             },
             "review_rows": review_payload,
             "processing_summary": {
@@ -294,6 +322,20 @@ class LocalPipelineBackend:
                 self._fill_daily_row(row, azure_result)
         except Exception as exc:
             row["extract_error"] = str(exc)
+
+        preview_path_raw = row.get("preview_path")
+        if isinstance(preview_path_raw, str) and preview_path_raw.strip():
+            try:
+                organized_path = _copy_pdf_to_organized_dir(
+                    compressed_pdf=Path(preview_path_raw),
+                    output_root=archive_root.parent,
+                    category=category,
+                    run_date=batch.run_date or "",
+                    extracted_result=row.get("result") or {},
+                )
+                row["organized_path"] = str(organized_path)
+            except Exception as exc:
+                row["organize_error"] = str(exc)
 
         return row
 
@@ -510,7 +552,6 @@ class LocalPipelineBackend:
             "Netto",
             "Steuernummer",
             "Is Receiver OK",
-            "Is Receiver Address OK",
             "need review",
             "Rechnung Scannen",
         ]
@@ -533,15 +574,15 @@ class LocalPipelineBackend:
                 result.get("netto"),
                 result.get("tax_id"),
                 result.get("receiver_ok"),
-                result.get("receiver_address_ok"),
                 bool(row.get("need review", False)),
                 row.get("preview_path") or row.get("preview_url"),
             ]
             ws.append(excel_row)
             write_datum_cell(ws.cell(row=row_idx, column=1), datum)
-            link = _to_excel_hyperlink(excel_row[9])
+            scan_col_idx = headers.index("Rechnung Scannen")
+            link = _to_excel_hyperlink(excel_row[scan_col_idx])
             if link:
-                link_cell = ws.cell(row=row_idx, column=10)
+                link_cell = ws.cell(row=row_idx, column=scan_col_idx + 1)
                 link_cell.value = "check pdf"
                 link_cell.hyperlink = link
             row_idx += 1

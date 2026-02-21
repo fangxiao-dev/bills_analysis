@@ -90,6 +90,8 @@ def test_office_excel_mapping_parity() -> None:
     values = [cell.value for cell in ws[2]]
     row = {headers[idx]: values[idx] for idx in range(len(headers))}
 
+    assert "Is Receiver OK" in headers
+    assert "Is Receiver Address OK" not in headers
     assert row["Datum"].strftime("%d/%m/%Y") == "04/02/2026"
     assert row["Type"] == "Miete"
     assert row["Rechnung Name"] == "Metro"

@@ -748,7 +748,14 @@ def test_local_backend_calls_preprocess_and_extract(monkeypatch: pytest.MonkeyPa
     assert called["analyze"] == 1
     assert Path(artifacts["artifacts"]["result_json_path"]).exists()
     assert Path(artifacts["artifacts"]["review_json_path"]).exists()
+    assert Path(artifacts["artifacts"]["organized_root"]).exists()
     assert len(artifacts["review_rows"]) == 1
+
+    results_payload = json.loads(Path(artifacts["artifacts"]["result_json_path"]).read_text(encoding="utf-8"))
+    first_item = results_payload["items"][0]
+    assert first_item.get("organized_path")
+    assert Path(first_item["organized_path"]).exists()
+    assert "organized" in Path(first_item["organized_path"]).parts
 
 
 def test_local_backend_persists_office_di_fields_artifact(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1038,7 +1045,12 @@ def test_local_backend_office_merge_auto_creates_monthly_template_and_supports_a
         )
     )
     assert auto_monthly.exists()
+    validated_ws = load_workbook(Path(first_output["validated_excel_path"])).active
+    validated_headers = [cell.value for cell in validated_ws[1]]
+    assert "Is Receiver Address OK" not in validated_headers
     first_merged = load_workbook(Path(first_output["merged_excel_abs_path"])).active
+    merged_headers = [cell.value for cell in first_merged[1]]
+    assert "Is Receiver Address OK" not in merged_headers
     assert first_merged.max_row == 2
 
     second_output = asyncio.run(

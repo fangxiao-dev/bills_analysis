@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 try:
     from dotenv import load_dotenv
@@ -97,6 +98,9 @@ load_dotenv()
 
 _DI_CLIENT: DocumentIntelligenceClient | None = None
 _AOAI_CLIENT: AzureOpenAI | None = None
+OFFICE_PURPOSE_JFC = "JFC"
+OFFICE_PURPOSE_RAMEN_EUROPA = "Ramenlppin Europa"
+OFFICE_PURPOSE_FALLBACK = "Service&Andere"
 
 
 def _get_di_client() -> DocumentIntelligenceClient:
@@ -319,7 +323,140 @@ def test_analyze_invoice_with_azure():
     analyze_document_with_azure(img_path, model_id="prebuilt-invoice")
 
 
+def _flatten_text_values(payload: object) -> str:
+    """Recursively flatten all string values from nested payload into one lowercase text blob."""
+
+    parts: list[str] = []
+
+    def _walk(node: object) -> None:
+        if isinstance(node, dict):
+            for value in node.values():
+                _walk(value)
+            return
+        if isinstance(node, list):
+            for item in node:
+                _walk(item)
+            return
+        if isinstance(node, str):
+            stripped = node.strip()
+            if stripped:
+                parts.append(stripped)
+
+    _walk(payload)
+    return " ".join(parts).lower()
+
+
+def _collect_text_by_key_hints(payload: object, key_hints: set[str]) -> str:
+    """Collect string values whose key path contains any provided hint token."""
+
+    parts: list[str] = []
+
+    def _walk(node: object, path: list[str]) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                key_text = str(key).strip().lower()
+                _walk(value, [*path, key_text])
+            return
+        if isinstance(node, list):
+            for item in node:
+                _walk(item, path)
+            return
+        if isinstance(node, str):
+            joined_path = ".".join(path)
+            if any(hint in joined_path for hint in key_hints):
+                stripped = node.strip()
+                if stripped:
+                    parts.append(stripped)
+
+    _walk(payload, [])
+    return " ".join(parts).lower()
+
+
+def _is_ramen_europa_label(purpose: str | None) -> bool:
+    """Return whether a purpose label semantically points to Ramen Ippin Europa."""
+
+    if not isinstance(purpose, str):
+        return False
+    token = "".join(ch for ch in purpose.lower() if ch.isalnum())
+    if "europa" not in token:
+        return False
+    ramen_aliases = {
+        "ramenippin",
+        "ramenlppin",
+        "ramanippin",
+        "ramanlppin",
+    }
+    return any(alias in token for alias in ramen_aliases)
+
+
+def normalize_office_purpose(
+    *,
+    llm_purpose: str | None,
+    sender: str | None,
+    receiver: str | None,
+    distilled_data: dict,
+) -> tuple[str | None, dict[str, object]]:
+    """Apply deterministic Office type guardrails after LLM output to prevent key misclassification regressions."""
+
+    full_text = " ".join(
+        [
+            _flatten_text_values(distilled_data),
+            str(sender or ""),
+            str(receiver or ""),
+            str(llm_purpose or ""),
+        ]
+    ).lower()
+    vendor_side_text = " ".join(
+        [
+            _collect_text_by_key_hints(distilled_data, {"vendor", "seller", "supplier"}),
+            str(sender or ""),
+        ]
+    ).lower()
+    if not vendor_side_text.strip():
+        vendor_side_text = full_text
+
+    jfc_hit = bool(re.search(r"\bjfc\b", full_text, flags=re.IGNORECASE))
+    ramen_hit = bool(re.search(r"ram[ae]n\s*[il1]ppin", vendor_side_text, flags=re.IGNORECASE))
+    europa_hit = "europa" in vendor_side_text
+    llm_is_ramen_europa = _is_ramen_europa_label(llm_purpose)
+
+    if jfc_hit:
+        return OFFICE_PURPOSE_JFC, {
+            "guardrail_hit": True,
+            "reason": "jfc_override",
+            "jfc_hit": jfc_hit,
+            "ramen_hit": ramen_hit,
+            "europa_hit": europa_hit,
+        }
+    if ramen_hit and europa_hit:
+        return OFFICE_PURPOSE_RAMEN_EUROPA, {
+            "guardrail_hit": True,
+            "reason": "ramen_europa_vendor_evidence",
+            "jfc_hit": jfc_hit,
+            "ramen_hit": ramen_hit,
+            "europa_hit": europa_hit,
+        }
+    if llm_is_ramen_europa and not (ramen_hit and europa_hit):
+        return OFFICE_PURPOSE_FALLBACK, {
+            "guardrail_hit": True,
+            "reason": "reject_ramen_europa_without_vendor_europa",
+            "jfc_hit": jfc_hit,
+            "ramen_hit": ramen_hit,
+            "europa_hit": europa_hit,
+        }
+
+    return llm_purpose, {
+        "guardrail_hit": False,
+        "reason": "no_override",
+        "jfc_hit": jfc_hit,
+        "ramen_hit": ramen_hit,
+        "europa_hit": europa_hit,
+    }
+
+
 def extract_office_invoice_azure(distilled_data: dict):
+    """Extract office semantic fields via AOAI and apply deterministic purpose guardrails."""
+
     client = _get_aoai_client()
     # print(f"[AzureOpenAI] Extracting office invoice category with distilled data: {distilled_data}")
     prompt = """
@@ -379,6 +516,9 @@ def extract_office_invoice_azure(distilled_data: dict):
         ### Rules
         - **OCR Correction**: Prioritize the "Known Entities" list. If an extracted name looks like a misspelling of a known entity, use the **Standard** version.
         - The special purposes, asiatico, Fuji, JFC, Ramenlppin Europa, are specific vendor names relating to food-chain, having the highest priority. If any of these keywords are found, classify accordingly without further analysis.
+        - **Hard Constraint**: If any evidence contains "JFC", output purpose as exactly "JFC".
+        - **Hard Constraint**: "Ramenlppin Europa" requires BOTH Ramen/Raman Ippin keyword AND "Europa" in vendor-side evidence.
+        - **Hard Constraint**: Never assign vendor special categories only from receiver text.
         - Other normal purposes, if it is also about food, but does not contain the above keywords, classify as "Lebensmittel&Bedarf".
         - If the purpose is ambiguous, use common sense based on the merchant name.
         - If impossible to determine the purpose, use "Service&Andere".
@@ -407,7 +547,25 @@ def extract_office_invoice_azure(distilled_data: dict):
     content = response.choices[0].message.content or "{}"
 
     try:
-        return json.loads(content)
+        parsed = json.loads(content)
+        if not isinstance(parsed, dict):
+            return {}
+        original_purpose = parsed.get("purpose")
+        final_purpose, debug_info = normalize_office_purpose(
+            llm_purpose=original_purpose if isinstance(original_purpose, str) else None,
+            sender=parsed.get("sender") if isinstance(parsed.get("sender"), str) else None,
+            receiver=parsed.get("receiver") if isinstance(parsed.get("receiver"), str) else None,
+            distilled_data=distilled_data,
+        )
+        parsed["purpose"] = final_purpose
+        print(
+            "[OfficePurpose] "
+            f"llm_purpose={original_purpose!r} final_purpose={final_purpose!r} "
+            f"guardrail_hit={debug_info.get('guardrail_hit')} reason={debug_info.get('reason')} "
+            f"jfc_hit={debug_info.get('jfc_hit')} ramen_hit={debug_info.get('ramen_hit')} "
+            f"europa_hit={debug_info.get('europa_hit')}"
+        )
+        return parsed
     except json.JSONDecodeError:
         return {}
 
