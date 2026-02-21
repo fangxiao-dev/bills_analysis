@@ -199,7 +199,9 @@ class LocalPipelineBackend:
                     row_id=f"row-{idx:04d}",
                     batch=batch,
                     item=item,
-                    archive_root=archive_root,`r`n                    organized_root=organized_root,`r`n                    max_pages=max_pages,
+                    archive_root=archive_root,
+                    organized_root=organized_root,
+                    max_pages=max_pages,
                 )
             )
             for idx, item in enumerate(batch.inputs, start=1)
@@ -276,7 +278,9 @@ class LocalPipelineBackend:
                     row_id=row_id,
                     batch=batch,
                     item=item,
-                    archive_root=archive_root,`r`n                    organized_root=organized_root,`r`n                    max_pages=max_pages,
+                    archive_root=archive_root,
+                    organized_root=organized_root,
+                    max_pages=max_pages,
                 ),
                 timeout=self.file_timeout_sec,
             )
@@ -625,6 +629,8 @@ class LocalPipelineBackend:
             raise ValueError("No office review rows available for merge")
 
         wb.save(out_path)
+
+
 
 
 
