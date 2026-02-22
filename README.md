@@ -120,6 +120,24 @@ Notes:
 - Queue/repository are in-memory implementations; replace them with Azure Queue + persistent store later without changing API/use-case signatures.
 - Legacy commands under `tests/*.py` are kept as thin wrappers; core business logic is migrated to `src/bills_analysis/services/` and `src/bills_analysis/integrations/`.
 
+## Docker (M2 demo)
+- Prerequisite: Docker Desktop (or Docker Engine + Compose plugin).
+- Review environment variables in `.env.docker` before first run.
+- Build and start:
+  `docker compose up --build -d`
+- Check health:
+  `docker compose ps`
+  `curl http://127.0.0.1:8000/healthz`
+- View logs:
+  `docker compose logs -f api`
+- Stop containers:
+  `docker compose down`
+
+Docker notes:
+- The single service `api` builds backend + frontend static assets from `Dockerfile`.
+- API is exposed on `http://127.0.0.1:8000`.
+- Local `outputs/` is mounted into container path `/app/outputs` for persisted artifacts.
+
 ## Next steps (per PoC)
 - Fill the pipeline (render → preprocess → Azure API → extract → evidence) inside `src/bills_analysis/`.
 - Add golden sample PDFs and expected outputs under `data/samples/` and `tests/`.

@@ -254,6 +254,71 @@ def test_review_rows_and_preview_routes() -> None:
         assert preview_res.headers["content-type"].startswith("application/pdf")
 
 
+def test_review_submit_keeps_preview_path_when_payload_omits_it() -> None:
+    """Review submit should preserve existing preview_path so preview URL stays usable."""
+
+    TestClient, app = _get_test_client_and_app()
+    with TestClient(app) as client:
+        create_res = client.post(
+            "/v1/batches",
+            json={
+                "type": "daily",
+                "run_date": "04/02/2026",
+                "inputs": [{"path": "a.pdf", "category": "bar"}],
+                "metadata": {},
+            },
+        )
+        assert create_res.status_code == 200
+        batch_id = create_res.json()["batch_id"]
+
+        preview_path = Path("outputs") / "webapp" / batch_id / "archive" / "bar" / "preview_keep.pdf"
+        preview_path.parent.mkdir(parents=True, exist_ok=True)
+        preview_path.write_bytes(b"%PDF-1.4\npreview\n%%EOF")
+
+        seed_review_res = client.put(
+            f"/v1/batches/{batch_id}/review",
+            json={
+                "rows": [
+                    {
+                        "row_id": "row-0001",
+                        "filename": "a.pdf",
+                        "category": "bar",
+                        "result": {"brutto": "1.0"},
+                        "score": {"brutto": 0.9},
+                        "preview_path": str(preview_path.resolve()),
+                    }
+                ]
+            },
+        )
+        assert seed_review_res.status_code == 200
+
+        review_res = client.put(
+            f"/v1/batches/{batch_id}/review",
+            json={
+                "rows": [
+                    {
+                        "row_id": "row-0001",
+                        "filename": "a.pdf",
+                        "category": "bar",
+                        "result": {"brutto": "2.0"},
+                        "score": {"brutto": 0.95},
+                    }
+                ]
+            },
+        )
+        assert review_res.status_code == 200
+
+        rows_res = client.get(f"/v1/batches/{batch_id}/review-rows")
+        assert rows_res.status_code == 200
+        body = rows_res.json()
+        assert len(body["rows"]) == 1
+        assert body["rows"][0]["preview_url"]
+
+        preview_res = client.get(body["rows"][0]["preview_url"])
+        assert preview_res.status_code == 200
+        assert preview_res.headers["content-type"].startswith("application/pdf")
+
+
 def test_submit_review_rejects_missing_result_shape() -> None:
     """Review submit should return 422 when row does not provide canonical nested result."""
 

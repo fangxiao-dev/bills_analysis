@@ -79,6 +79,9 @@ export function isLowConfidenceField(row, fieldKey, threshold = DEFAULT_REVIEW_T
  * @param {number} [threshold]
  */
 export function isProblemField(row, fieldKey, threshold = DEFAULT_REVIEW_THRESHOLD) {
+  if (hasManualOverride(row, fieldKey)) {
+    return false;
+  }
   const value = row?.[fieldKey];
   if (isEmptyLikeValue(value)) {
     return true;
@@ -87,4 +90,41 @@ export function isProblemField(row, fieldKey, threshold = DEFAULT_REVIEW_THRESHO
     return true;
   }
   return isLowConfidenceField(row, fieldKey, threshold);
+}
+
+/**
+ * Detect whether user has manually changed one field compared with raw backend result.
+ * @param {Record<string, unknown>} row
+ * @param {string} fieldKey
+ */
+export function hasManualOverride(row, fieldKey) {
+  const raw = row?.raw_result;
+  if (!raw || typeof raw !== "object" || !(fieldKey in raw)) {
+    return false;
+  }
+
+  const currentValue = row?.[fieldKey];
+  const rawValue = raw[fieldKey];
+
+  if (isCheckField(fieldKey)) {
+    const currentBool = parseBooleanLike(currentValue);
+    const rawBool = parseBooleanLike(rawValue);
+    if (currentBool != null && rawBool != null) {
+      return currentBool !== rawBool;
+    }
+  }
+
+  return normalizeComparableValue(currentValue) !== normalizeComparableValue(rawValue);
+}
+
+/**
+ * Normalize value for stable manual-edit comparison.
+ * @param {unknown} value
+ */
+function normalizeComparableValue(value) {
+  if (value == null) {
+    return "-";
+  }
+  const text = String(value).trim();
+  return text || "-";
 }

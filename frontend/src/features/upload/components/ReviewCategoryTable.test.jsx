@@ -138,6 +138,32 @@ describe("ReviewCategoryTable low-confidence highlight", () => {
     expect(receiverInput.className).toContain("review-cell-low-confidence");
   });
 
+  it("removes highlight for low-confidence daily field after manual edit", () => {
+    const rows = [
+      {
+        id: "row-5b",
+        filename: "daily.pdf",
+        brutto: "11.00",
+        netto: "8.40",
+        score: { brutto: 0.2 },
+        raw_result: { brutto: "10.00" },
+      },
+    ];
+
+    render(
+      <ReviewCategoryTable
+        title="BAR"
+        description="test"
+        rows={rows}
+        columns={columns}
+        onChangeCell={vi.fn()}
+      />
+    );
+
+    const bruttoInput = screen.getByLabelText("BAR-brutto-row-5b");
+    expect(bruttoInput.className).not.toContain("review-cell-low-confidence");
+  });
+
   it("renders select input for configured column and keeps current backend value", () => {
     const selectColumns = [
       { key: "filename", label: "File", readOnly: true },
