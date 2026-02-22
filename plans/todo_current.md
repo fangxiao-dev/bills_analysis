@@ -18,3 +18,4 @@
 | TC-103 | 多页PDF跳过提取但保留空行供手填：local_backend加max_pages检查（从config读取），超限写skip_reason并生成空row；BatchReviewRow加skip_reason字段；review表格对skip_reason非空条目显示⚠图标 | DONE | 20260221-TC-103 | 2026-02-21T16:49:22+01:00 |  |
 | TC-104 | 1）upload阶段添加PDF页数超限⚠提醒+查看PDF；2）review阶段支持删除行（不影响JSON，仅影响最终输出） | DONE | 20260221-TC-104 | 2026-02-21T17:36:16+01:00 |  |
 | TC-105 | Web API主链路异步优化：预检查后并发执行识别+压缩，超页尽早跳过识别但保留归档，并在汇合阶段重命名 | DONE | 20260221-TC-105 | 2026-02-21T19:35:58+01:00 | Implemented async precheck+parallel fan-out/join with extract concurrency limits |
+| TC-106 | office receiver城市化：Upload选择城市，按配置自动匹配地址并参与receiver校验（地址只读、可扩展mapping） | PLANNED | 20260222-TC-106 | 2026-02-22T20:22:38+01:00 |  |
