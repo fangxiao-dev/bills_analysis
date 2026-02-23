@@ -5,6 +5,47 @@ import { useUploadFlow } from "./useUploadFlow";
 import { AppHttpError } from "../../../lib/http";
 
 describe("useUploadFlow", () => {
+  it("prefers cached office receiver city over backend default when valid", async () => {
+    window.localStorage.setItem("upload.office_receiver_city", "Essen");
+    const client = createMockUploadClient({ latencyMs: 0 });
+    client.getOfficeReceiverOptions = vi.fn(async () => ({
+      default_city: "Dortmund",
+      options: [
+        {
+          city: "Dortmund",
+          receiver_name: "Ramen Ippin Dortmund GmbH",
+          receiver_address: "Reinoldistr.8 44135 Dortmund",
+        },
+        {
+          city: "Essen",
+          receiver_name: "Ramen Ippin Essen GmbH",
+          receiver_address: "Demo Str. 1 45127 Essen",
+        },
+      ],
+    }));
+
+    const { result } = renderHook(() => useUploadFlow({ client }));
+    act(() => {
+      result.current.actions.setBatchType("office");
+    });
+    await act(async () => {
+      await result.current.actions.fetchOfficeReceiverOptions();
+    });
+
+    expect(result.current.state.officeReceiverCity).toBe("Essen");
+  });
+
+  it("persists office receiver city when user changes selection", () => {
+    window.localStorage.removeItem("upload.office_receiver_city");
+    const client = createMockUploadClient({ latencyMs: 0 });
+    const { result } = renderHook(() => useUploadFlow({ client }));
+
+    act(() => {
+      result.current.actions.setOfficeReceiverCity("Dortmund");
+    });
+    expect(window.localStorage.getItem("upload.office_receiver_city")).toBe("Dortmund");
+  });
+
   it("rejects non-PDF files during addFiles", () => {
     const client = createMockUploadClient({ latencyMs: 0 });
     const { result } = renderHook(() => useUploadFlow({ client }));
@@ -177,6 +218,62 @@ describe("useUploadFlow", () => {
     expect(client.createBatchUpload).toHaveBeenCalledTimes(1);
     expect(client.createBatch).not.toHaveBeenCalled();
     expect(client.uploadFiles).not.toHaveBeenCalled();
+  });
+
+  it("submits office batch with office_receiver_city in metadata", async () => {
+    const queuedBatch = {
+      schema_version: "v1",
+      batch_id: "b-office-upload",
+      type: "office",
+      status: "queued",
+      run_date: "10/02/2026",
+      inputs: [{ path: "outputs/webapp/uploads/x/office/01_office.pdf", category: "office" }],
+      artifacts: {},
+      review_rows_count: 0,
+      merge_output: {},
+      error: null,
+      created_at: "2026-02-10T00:00:00Z",
+      updated_at: "2026-02-10T00:00:00Z",
+    };
+
+    const client = {
+      mode: "real",
+      uploadFiles: vi.fn(),
+      createBatch: vi.fn(),
+      createBatchUpload: vi.fn(async () => ({ batch_id: "b-office-upload" })),
+      getBatch: vi.fn(async () => queuedBatch),
+      listBatches: vi.fn(async () => ({ schema_version: "v1", total: 1, items: [queuedBatch] })),
+      submitReview: vi.fn(async () => ({ ...queuedBatch, status: "review_ready" })),
+      queueMerge: vi.fn(async () => ({ schema_version: "v1", task_id: "t-1", batch_id: "b-office-upload", task_type: "merge_batch", created_at: "2026-02-10T00:00:00Z" })),
+      getOfficeReceiverOptions: vi.fn(async () => ({
+        default_city: "Dortmund",
+        options: [
+          {
+            city: "Dortmund",
+            receiver_name: "Ramen Ippin Dortmund GmbH",
+            receiver_address: "Reinoldistr.8 44135 Dortmund",
+          },
+        ],
+      })),
+    };
+
+    const { result } = renderHook(() => useUploadFlow({ client }));
+    act(() => {
+      result.current.actions.setBatchType("office");
+      result.current.actions.setRunDate("10/02/2026");
+      result.current.actions.addFiles([new File(["office"], "office.pdf", { type: "application/pdf" })], "office");
+    });
+    await act(async () => {
+      await result.current.actions.fetchOfficeReceiverOptions();
+    });
+
+    let ok;
+    await act(async () => {
+      ok = await result.current.actions.submitBatch();
+    });
+    expect(ok).toBe(true);
+    expect(client.createBatchUpload).toHaveBeenCalledTimes(1);
+    expect(client.createBatchUpload.mock.calls[0][0].metadata.office_receiver_city).toBe("Dortmund");
   });
 
   it("exposes readable 422 validation details on review submit failure", async () => {
@@ -377,5 +474,25 @@ describe("useUploadFlow", () => {
       ]);
     });
     expect(result.current.state.reportTypeErrorConsumed).toBe(false);
+  });
+
+  it("keeps options empty when office receiver options response is empty", async () => {
+    const client = createMockUploadClient({ latencyMs: 0 });
+    client.getOfficeReceiverOptions = vi.fn(async () => ({
+      default_city: "",
+      options: [],
+    }));
+
+    const { result } = renderHook(() => useUploadFlow({ client }));
+    act(() => {
+      result.current.actions.setBatchType("office");
+    });
+
+    await act(async () => {
+      await result.current.actions.fetchOfficeReceiverOptions();
+    });
+
+    expect(result.current.state.officeReceiverOptions).toHaveLength(0);
+    expect(result.current.state.officeReceiverCity).toBe("");
   });
 });

@@ -101,6 +101,25 @@
         "summary": "Create Batch"
       }
     },
+    "/v1/batches/office-receiver-options": {
+      "get": {
+        "description": "Return read-only office receiver city options for upload UI.",
+        "operationId": "get_office_receiver_options_v1_batches_office_receiver_options_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficeReceiverOptionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Office Receiver Options"
+      }
+    },
     "/v1/batches/upload": {
       "post": {
         "description": "Create a batch from multipart upload and enqueue processing task.",
@@ -1089,6 +1108,59 @@
         "created_at"
       ],
       "title": "MergeTaskResponse",
+      "type": "object"
+    },
+    "OfficeReceiverOption": {
+      "additionalProperties": false,
+      "description": "One office receiver city option exposed to upload UI.",
+      "properties": {
+        "city": {
+          "title": "City",
+          "type": "string"
+        },
+        "receiver_address": {
+          "title": "Receiver Address",
+          "type": "string"
+        },
+        "receiver_name": {
+          "title": "Receiver Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "city",
+        "receiver_name",
+        "receiver_address"
+      ],
+      "title": "OfficeReceiverOption",
+      "type": "object"
+    },
+    "OfficeReceiverOptionsResponse": {
+      "additionalProperties": false,
+      "description": "Read-only office receiver city options response envelope.",
+      "properties": {
+        "default_city": {
+          "title": "Default City",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/components/schemas/OfficeReceiverOption"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "v1",
+          "default": "v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "default_city"
+      ],
+      "title": "OfficeReceiverOptionsResponse",
       "type": "object"
     },
     "ReportErrorResponse": {

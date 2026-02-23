@@ -15,6 +15,7 @@ from openpyxl import Workbook
 
 from bills_analysis.excel_ops import normalize_date, write_datum_cell
 from bills_analysis.integrations.excel_mapper_adapter import map_daily_json_to_excel
+from bills_analysis.integrations.office_receiver_mapping import resolve_expected_receiver_from_metadata
 from bills_analysis.integrations.office_semantics import match_receiver_address, resolve_receiver_ok
 from bills_analysis.models.common import InputFile
 from bills_analysis.models.internal import BatchRecord
@@ -173,10 +174,15 @@ class _AsyncRateLimiter:
             self._next_allowed_at = loop.time() + self.min_interval_sec
 
 
-def _resolve_receiver_ok(office_info: dict[str, Any]) -> bool | None:
-    """Normalize Office receiver consistency output to bool using model output and configurable expected receiver."""
-    expected_receiver = os.getenv("OFFICE_EXPECTED_RECEIVER", "Ramen Ippin Dortmund GmbH").strip()
-    expected_address = os.getenv("OFFICE_EXPECTED_RECEIVER_ADDRESS", "Reinoldistr.8 44135 Dortmund").strip()
+def _resolve_receiver_ok(
+    office_info: dict[str, Any],
+    *,
+    batch_metadata: dict[str, Any] | None = None,
+) -> bool | None:
+    """Normalize Office receiver consistency output to bool using city-resolved expected receiver."""
+    expected = resolve_expected_receiver_from_metadata(batch_metadata)
+    expected_receiver = expected["receiver_name"].strip()
+    expected_address = expected["receiver_address"].strip()
     if not expected_receiver or not expected_address:
         return None
     return resolve_receiver_ok(
@@ -186,8 +192,12 @@ def _resolve_receiver_ok(office_info: dict[str, Any]) -> bool | None:
     )
 
 
-def _resolve_receiver_address_ok(office_info: dict[str, Any]) -> bool | None:
-    """Normalize Office receiver address consistency output to bool using model output and configurable expected address."""
+def _resolve_receiver_address_ok(
+    office_info: dict[str, Any],
+    *,
+    batch_metadata: dict[str, Any] | None = None,
+) -> bool | None:
+    """Normalize Office receiver address consistency output to bool using city-resolved expected address."""
 
     receiver_address = office_info.get("receiver_address")
     if not isinstance(receiver_address, str):
@@ -195,7 +205,8 @@ def _resolve_receiver_address_ok(office_info: dict[str, Any]) -> bool | None:
     address_text = receiver_address.strip()
     if not address_text:
         return None
-    expected_address = os.getenv("OFFICE_EXPECTED_RECEIVER_ADDRESS", "Reinoldistr.8 44135 Dortmund").strip()
+    expected = resolve_expected_receiver_from_metadata(batch_metadata)
+    expected_address = expected["receiver_address"].strip()
     if not expected_address:
         return None
     return match_receiver_address(address_text, expected_address)
@@ -500,6 +511,7 @@ class LocalPipelineBackend:
                         row,
                         azure_result,
                         office_fields,
+                        batch_metadata=batch.metadata,
                         batch_out_dir=archive_root.parent,
                     )
                 else:
@@ -543,6 +555,7 @@ class LocalPipelineBackend:
         azure_result: dict[str, Any],
         office_fields: dict[str, Any],
         *,
+        batch_metadata: dict[str, Any] | None,
         batch_out_dir: Path,
     ) -> None:
         """Map Azure invoice fields and optional Office semantics into review row."""
@@ -565,9 +578,15 @@ class LocalPipelineBackend:
             row["result"]["type"] = office_info.get("purpose")
             row["result"]["sender"] = office_info.get("sender")
             row["result"]["receiver_name"] = office_info.get("receiver")
-            row["result"]["receiver_ok"] = _resolve_receiver_ok(office_info)
+            row["result"]["receiver_ok"] = _resolve_receiver_ok(
+                office_info,
+                batch_metadata=batch_metadata,
+            )
             row["result"]["receiver_address"] = office_info.get("receiver_address")
-            row["result"]["receiver_address_ok"] = _resolve_receiver_address_ok(office_info)
+            row["result"]["receiver_address_ok"] = _resolve_receiver_address_ok(
+                office_info,
+                batch_metadata=batch_metadata,
+            )
         except Exception as exc:
             row["semantic_error"] = str(exc)
 

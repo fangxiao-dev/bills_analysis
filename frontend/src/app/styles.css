@@ -264,6 +264,26 @@ button {
   background: #eff5ff;
 }
 
+.office-receiver-panel {
+  border: 1px solid #dce5f3;
+  border-radius: 0.7rem;
+  background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
+  padding: 0.72rem;
+}
+
+.office-receiver-grid {
+  display: grid;
+  gap: 0.68rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 980px) {
+  .office-receiver-grid {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.1fr);
+    align-items: end;
+  }
+}
+
 .file-row {
   border-bottom: 1px solid #e3eaf5;
 }

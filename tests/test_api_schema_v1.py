@@ -174,6 +174,24 @@ def test_api_contract_v1_endpoints() -> None:
         assert list_body["total"] >= 1
 
 
+def test_office_receiver_options_endpoint_contract() -> None:
+    """Office receiver options endpoint should return v1 envelope with city options."""
+
+    TestClient, app = _get_test_client_and_app()
+    with TestClient(app) as client:
+        res = client.get("/v1/batches/office-receiver-options")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["schema_version"] == "v1"
+        assert isinstance(body["default_city"], str)
+        assert isinstance(body["options"], list)
+        assert len(body["options"]) >= 1
+        first = body["options"][0]
+        assert isinstance(first["city"], str)
+        assert isinstance(first["receiver_name"], str)
+        assert isinstance(first["receiver_address"], str)
+
+
 def test_cors_preflight_options_for_create_batch() -> None:
     """CORS preflight OPTIONS for create-batch endpoint should not return 405."""
 

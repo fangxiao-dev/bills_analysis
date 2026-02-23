@@ -199,6 +199,23 @@ export function createMockUploadClient(options = {}) {
         corrections: [],
       };
     },
+
+    /**
+     * Return static office receiver options for frontend-only testing.
+     */
+    async getOfficeReceiverOptions() {
+      await wait(latencyMs);
+      return {
+        default_city: "Dortmund",
+        options: [
+          {
+            city: "Dortmund",
+            receiver_name: "Ramen Ippin Dortmund GmbH",
+            receiver_address: "Reinoldistr.8 44135 Dortmund",
+          },
+        ],
+      };
+    },
   };
 }
 

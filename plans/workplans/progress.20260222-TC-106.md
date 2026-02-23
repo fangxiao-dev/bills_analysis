@@ -35,3 +35,26 @@
 | Timestamp | Error | Attempt | Resolution |
 |---|---|---|---|
 | 2026-02-22T20:23:xx+01:00 | `uv cache` permission denied in sandbox | 1 | Re-run with escalated permission |
+
+## Session: 2026-02-23
+
+### Phase 3: Implementation & Validation
+- **Status:** completed
+- Actions taken:
+  - Implemented office receiver city mapping resolver with `tests/config.json` as source-of-truth.
+  - Added read-only API endpoint `/v1/batches/office-receiver-options`.
+  - Updated upload page to show city selector + receiver full name + receiver address (read-only).
+  - Added local cache behavior: first visit uses config default; subsequent visits restore user-selected city when valid.
+  - Applied UI cleanup: removed panel title and simplified city label text.
+  - Cherry-picked `866b304874be4236a3b1d5ab47d6dfc596ae276e` for workflow docs optimization (favor theirs on divergence).
+
+### Verification Summary
+| Test | Scope | Result |
+|---|---|---|
+| `uv run pytest tests/test_office_receiver_mapping.py tests/test_api_schema_v1.py -q` | backend contract + mapping | PASS |
+| `pnpm --dir frontend test -- --run ...` | frontend upload/review affected suites | PASS |
+| Manual validation | office city selection + receiver display + merge-flow compatibility | PASS |
+
+### Current Status
+- `TC-106` updated to `DONE` with `plan_id=20260222-TC-106`.
+- Ready for branch integration flow (merge/cherry-pick to trunk as needed).
