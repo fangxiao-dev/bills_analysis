@@ -1,6 +1,7 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from typing import Protocol
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol
 
 from bills_analysis.models.internal import BatchRecord, QueueTask
 
@@ -51,8 +52,13 @@ class TaskQueue(Protocol):
 class ProcessingBackend(Protocol):
     """Backend contract that executes processing and merge work."""
 
-    async def process_batch(self, batch: BatchRecord) -> dict:
-        """Run extraction/processing stage for a batch."""
+    async def process_batch(
+        self,
+        batch: BatchRecord,
+        *,
+        on_file_done: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    ) -> dict[str, Any]:
+        """Run extraction stage and optionally notify per-file completion."""
 
         ...
 

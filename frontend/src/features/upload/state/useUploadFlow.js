@@ -27,6 +27,10 @@ import {
  *    getReviewRows?: (batchId: string) => Promise<{ rows: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>;
  *    uploadMergeSourceLocal?: (batchId: string, file: File) => Promise<{ monthly_excel_path: string }>;
  *    reportTypeError?: (batchId: string) => Promise<{ status: "reported" | "skipped"; corrections: Array<Record<string, unknown>> }>;
+ *    getOfficeReceiverOptions?: () => Promise<{
+ *      default_city: string;
+ *      options: Array<{ city: string; receiver_name: string; receiver_address: string }>;
+ *    }>;
  *  };
  * }} params
  */
@@ -54,12 +58,19 @@ export function useUploadFlow({ client }) {
     dispatch({ type: "SET_RUN_DATE", value });
   }, []);
 
+  const setOfficeReceiverCity = useCallback((value) => {
+    persistOfficeReceiverCity(value);
+    dispatch({ type: "SET_OFFICE_RECEIVER_CITY", value });
+  }, []);
+
   const setReviewRowsText = useCallback((value) => {
     dispatch({ type: "SET_REVIEW_TEXT", value });
   }, []);
 
   const removeFile = useCallback((id) => {
-    dispatch({ type: "REMOVE_FILE", id });
+    const current = stateRef.current;
+    const target = current.files.find((entry) => entry.id === id);
+    dispatch({ type: "REMOVE_FILE", id, name: target?.name || "" });
   }, []);
 
   /**
@@ -195,6 +206,12 @@ export function useUploadFlow({ client }) {
         source: "frontend_m1",
         api_mode: client.mode,
       };
+      if (current.batchType === "office") {
+        const officeReceiverCity = current.officeReceiverCity || current.officeReceiverDefaultCity || "";
+        if (officeReceiverCity) {
+          metadata.office_receiver_city = officeReceiverCity;
+        }
+      }
 
       if (typeof client.createBatchUpload === "function") {
         const uploadResult = await client.createBatchUpload({
@@ -338,7 +355,11 @@ export function useUploadFlow({ client }) {
     dispatch({ type: "REVIEW_ROWS_LOAD_START" });
     try {
       const payload = await client.getReviewRows(batchId);
-      const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.rows) ? payload.rows : [];
+      const rawRows = Array.isArray(payload) ? payload : Array.isArray(payload?.rows) ? payload.rows : [];
+      const fileNames = new Set(current.files.map((entry) => entry.name));
+      const rows = fileNames.size
+        ? rawRows.filter((row) => fileNames.has(normalizeQueueFilename(row?.filename)))
+        : rawRows;
       dispatch({ type: "REVIEW_ROWS_LOAD_SUCCESS", rows });
       return rows;
     } catch (error) {
@@ -411,6 +432,47 @@ export function useUploadFlow({ client }) {
   }, [client]);
 
   /**
+   * Load office receiver city options when backend endpoint is available.
+   */
+  const fetchOfficeReceiverOptions = useCallback(async () => {
+    if (typeof client.getOfficeReceiverOptions !== "function") {
+      dispatch({
+        type: "OFFICE_RECEIVER_OPTIONS_LOAD_FAILURE",
+        message: "Office receiver options endpoint is unavailable.",
+      });
+      return null;
+    }
+
+    dispatch({ type: "OFFICE_RECEIVER_OPTIONS_LOAD_START" });
+    try {
+      const payload = await client.getOfficeReceiverOptions();
+      const optionsRaw = Array.isArray(payload?.options) ? payload.options : [];
+      const options = optionsRaw
+        .map((item) => ({
+          city: String(item?.city || "").trim(),
+          receiver_name: String(item?.receiver_name || "").trim(),
+          receiver_address: String(item?.receiver_address || "").trim(),
+        }))
+        .filter((item) => item.city && item.receiver_name && item.receiver_address);
+      const defaultCity = String(payload?.default_city || "").trim() || options[0]?.city || "";
+      const cachedCity = readCachedOfficeReceiverCity();
+      const selectedCity = options.some((item) => item.city === cachedCity) ? cachedCity : defaultCity;
+      dispatch({
+        type: "OFFICE_RECEIVER_OPTIONS_LOAD_SUCCESS",
+        options,
+        defaultCity: selectedCity,
+      });
+      return { default_city: selectedCity, options };
+    } catch (error) {
+      dispatch({
+        type: "OFFICE_RECEIVER_OPTIONS_LOAD_FAILURE",
+        message: toErrorMessage(error),
+      });
+      return null;
+    }
+  }, [client]);
+
+  /**
    * Retry merge using last merge payload, only when batch failed.
    */
   const retryMerge = useCallback(async () => {
@@ -471,6 +533,7 @@ export function useUploadFlow({ client }) {
     actions: {
       setBatchType,
       setRunDate,
+      setOfficeReceiverCity,
       addFiles,
       removeFile,
       setReviewRowsText,
@@ -482,6 +545,7 @@ export function useUploadFlow({ client }) {
       fetchReviewRows,
       resolveMonthlyPathFromLocal,
       reportTypeError,
+      fetchOfficeReceiverOptions,
       retryMerge,
       retryPolling,
     },
@@ -492,6 +556,42 @@ export function useUploadFlow({ client }) {
       isDone: state.phase === "done",
     },
   };
+}
+
+const OFFICE_RECEIVER_CITY_STORAGE_KEY = "upload.office_receiver_city";
+
+/**
+ * Read cached office receiver city from localStorage.
+ * Returns empty string when unavailable.
+ */
+function readCachedOfficeReceiverCity() {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return "";
+    }
+    return String(window.localStorage.getItem(OFFICE_RECEIVER_CITY_STORAGE_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Persist office receiver city to localStorage.
+ */
+function persistOfficeReceiverCity(value) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return;
+    }
+    const text = String(value || "").trim();
+    if (text) {
+      window.localStorage.setItem(OFFICE_RECEIVER_CITY_STORAGE_KEY, text);
+      return;
+    }
+    window.localStorage.removeItem(OFFICE_RECEIVER_CITY_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures and keep runtime behavior.
+  }
 }
 
 /**
@@ -568,4 +668,13 @@ async function recoverRecentBatch(client, current, submitStartedAt) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Normalize backend filename for queue matching.
+ * Backend may prefix index like "01_xxx.pdf".
+ * @param {unknown} value
+ */
+function normalizeQueueFilename(value) {
+  return String(value || "").replace(/^\d+_/, "").trim();
 }

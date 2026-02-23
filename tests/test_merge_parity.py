@@ -252,3 +252,40 @@ def test_office_merge_overwrite_keeps_multiple_same_datum_rows_from_validated() 
     assert ws_out.max_row == 4
     names = [ws_out.cell(row=row_idx, column=3).value for row_idx in range(2, 5)]
     assert names == ["Metro", "EON", "Telekom"]
+
+
+def test_office_merge_filters_legacy_receiver_address_ok_column() -> None:
+    """Office merge should ignore legacy Is Receiver Address OK column from validated input."""
+
+    root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    validated = root / "validated_office_legacy.xlsx"
+    monthly = root / "monthly_office.xlsx"
+
+    _new_book(
+        validated,
+        [
+            "Datum",
+            "Type",
+            "Rechnung Name",
+            "Brutto",
+            "Netto",
+            "Steuernummer",
+            "Is Receiver OK",
+            "Is Receiver Address OK",
+            "need review",
+            "Rechnung Scannen",
+        ],
+        [["04/02/2026", "Miete", "Metro", 10.0, 8.0, "DE123", True, False, False, "check pdf"]],
+    )
+    _new_book(
+        monthly,
+        ["Datum", "Type", "Rechnung Name", "Brutto", "Netto", "Steuernummer", "Is Receiver OK", "Rechnung Scannen"],
+        [],
+    )
+
+    out_path = merge_office(validated, monthly, out_dir=root, append=False)
+    wb_out = load_workbook(out_path)
+    ws_out = wb_out.active
+    headers = [cell.value for cell in ws_out[1]]
+    assert "Is Receiver Address OK" not in headers
+    assert ws_out.cell(row=2, column=7).value is True

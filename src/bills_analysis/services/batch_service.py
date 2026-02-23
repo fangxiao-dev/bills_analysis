@@ -52,7 +52,11 @@ class BatchService:
         batch = await self.repo.get(batch_id)
         if batch is None:
             raise KeyError(batch_id)
-        normalized_rows = self._normalize_review_rows(review.rows, run_date=batch.run_date)
+        normalized_rows = self._normalize_review_rows(
+            review.rows,
+            run_date=batch.run_date,
+            existing_rows=batch.review_rows,
+        )
         batch.review_rows = normalized_rows
         batch.updated_at = datetime.now(UTC)
         self._persist_review_rows_artifact(batch, normalized_rows)
@@ -148,9 +152,16 @@ class BatchService:
         await self.queue.enqueue(task)
         return task
 
-    def _normalize_review_rows(self, rows: list[dict[str, Any]], *, run_date: str | None) -> list[dict[str, Any]]:
+    def _normalize_review_rows(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        run_date: str | None,
+        existing_rows: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
         """Validate and normalize submitted review rows into canonical backend shape."""
 
+        preview_by_row_id, preview_by_filename = self._build_preview_path_lookup(existing_rows or [])
         normalized: list[dict[str, Any]] = []
         for index, row in enumerate(rows, start=1):
             if not isinstance(row, dict):
@@ -184,6 +195,9 @@ class BatchService:
                 )
 
             score = row.get("score") if isinstance(row.get("score"), dict) else {}
+            preview_path = row.get("preview_path")
+            if preview_path in (None, "", "None"):
+                preview_path = preview_by_row_id.get(row_id) or preview_by_filename.get(filename)
             normalized.append(
                 {
                     "row_id": row_id,
@@ -191,10 +205,32 @@ class BatchService:
                     "filename": filename,
                     "result": dict(result),
                     "score": dict(score),
-                    "preview_path": row.get("preview_path"),
+                    "preview_path": preview_path,
                 }
             )
         return normalized
+
+    def _build_preview_path_lookup(
+        self,
+        rows: list[dict[str, Any]],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Build stable preview-path lookup maps from existing review rows."""
+
+        by_row_id: dict[str, Any] = {}
+        by_filename: dict[str, Any] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            preview_path = row.get("preview_path")
+            if preview_path in (None, "", "None"):
+                continue
+            row_id = str(row.get("row_id") or "").strip()
+            filename = str(row.get("filename") or "").strip()
+            if row_id:
+                by_row_id[row_id] = preview_path
+            if filename and filename not in by_filename:
+                by_filename[filename] = preview_path
+        return by_row_id, by_filename
 
     def _persist_review_rows_artifact(self, batch: BatchRecord, rows: list[dict[str, Any]]) -> None:
         """Persist submitted review rows for observability and local debugging."""

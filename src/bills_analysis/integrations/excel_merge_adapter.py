@@ -89,7 +89,6 @@ def _build_office_template_headers() -> list[str]:
         "Netto",
         "Steuernummer",
         "Is Receiver OK",
-        "Is Receiver Address OK",
         "Rechnung Scannen",
     ]
 
@@ -266,23 +265,17 @@ def merge_office_excel(
         return None
 
     for row, row_links in zip(validated_rows, validated_links):
-        if any(normalize_header(h) == normalize_header("need review") for h in validated_headers):
-            filtered_headers = []
-            filtered_row = []
-            filtered_links: list[str | None] = []
-            for h, v in zip(validated_headers, row):
-                if normalize_header(h) == normalize_header("need review"):
-                    continue
-                filtered_headers.append(h)
-                filtered_row.append(v)
-            for h, link in zip(validated_headers, row_links):
-                if normalize_header(h) == normalize_header("need review"):
-                    continue
-                filtered_links.append(link)
-        else:
-            filtered_headers = validated_headers
-            filtered_row = row
-            filtered_links = row_links
+        drop_headers = {
+            normalize_header("need review"),
+            normalize_header("Is Receiver Address OK"),
+        }
+        filtered_row = []
+        filtered_links: list[str | None] = []
+        for h, v, link in zip(validated_headers, row, row_links):
+            if normalize_header(h) in drop_headers:
+                continue
+            filtered_row.append(v)
+            filtered_links.append(link)
 
         if append:
             ws.append(filtered_row)

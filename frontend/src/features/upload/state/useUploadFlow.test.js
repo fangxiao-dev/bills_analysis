@@ -378,4 +378,83 @@ describe("useUploadFlow", () => {
     });
     expect(result.current.state.reportTypeErrorConsumed).toBe(false);
   });
+
+  it("filters fetched review rows by current queued files", async () => {
+    const queuedBatch = {
+      schema_version: "v1",
+      batch_id: "b-review",
+      type: "daily",
+      status: "review_ready",
+      run_date: "10/02/2026",
+      inputs: [
+        { path: "outputs/webapp/uploads/x/bar/01_keep.pdf", category: "bar" },
+        { path: "outputs/webapp/uploads/x/bar/02_drop.pdf", category: "bar" },
+      ],
+      artifacts: {},
+      review_rows_count: 2,
+      merge_output: {},
+      error: null,
+      created_at: "2026-02-10T00:00:00Z",
+      updated_at: "2026-02-10T00:00:00Z",
+    };
+
+    const client = {
+      mode: "real",
+      uploadFiles: vi.fn(),
+      createBatch: vi.fn(),
+      createBatchUpload: vi.fn(async () => ({ batch_id: "b-review" })),
+      getBatch: vi.fn(async () => queuedBatch),
+      listBatches: vi.fn(async () => ({ schema_version: "v1", total: 1, items: [queuedBatch] })),
+      submitReview: vi.fn(async () => ({ ...queuedBatch, status: "review_ready" })),
+      queueMerge: vi.fn(),
+      getReviewRows: vi.fn(async () => ({
+        rows: [
+          { row_id: "bar:keep.pdf:0", category: "bar", filename: "01_keep.pdf", result: {}, score: {} },
+          { row_id: "bar:drop.pdf:0", category: "bar", filename: "02_drop.pdf", result: {}, score: {} },
+        ],
+      })),
+    };
+
+    const { result } = renderHook(() => useUploadFlow({ client }));
+    act(() => {
+      result.current.actions.addFiles([new File(["keep"], "keep.pdf", { type: "application/pdf" })], "bar");
+      result.current.actions.addFiles([new File(["drop"], "drop.pdf", { type: "application/pdf" })], "bar");
+    });
+
+    await act(async () => {
+      await result.current.actions.submitBatch();
+    });
+
+    const removedId = result.current.state.files.find((entry) => entry.name === "drop.pdf")?.id;
+    expect(removedId).toBeTruthy();
+    act(() => {
+      result.current.actions.removeFile(removedId);
+    });
+
+    await act(async () => {
+      await result.current.actions.fetchReviewRows();
+    });
+
+    expect(result.current.state.reviewRows).toHaveLength(1);
+    expect(result.current.state.reviewRows[0].filename).toBe("01_keep.pdf");
+  });
+  it("keeps options empty when office receiver options response is empty", async () => {
+    const client = createMockUploadClient({ latencyMs: 0 });
+    client.getOfficeReceiverOptions = vi.fn(async () => ({
+      default_city: "",
+      options: [],
+    }));
+
+    const { result } = renderHook(() => useUploadFlow({ client }));
+    act(() => {
+      result.current.actions.setBatchType("office");
+    });
+
+    await act(async () => {
+      await result.current.actions.fetchOfficeReceiverOptions();
+    });
+
+    expect(result.current.state.officeReceiverOptions).toHaveLength(0);
+    expect(result.current.state.officeReceiverCity).toBe("");
+  });
 });

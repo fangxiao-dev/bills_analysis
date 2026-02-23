@@ -48,6 +48,11 @@ export const initialUploadState = {
     mode: "overwrite",
     monthly_excel_path: null,
   },
+  officeReceiverOptions: [],
+  officeReceiverDefaultCity: "",
+  officeReceiverCity: "",
+  officeReceiverLoading: false,
+  officeReceiverError: "",
   formError: "",
   systemError: "",
   rejectedMessage: "",
@@ -82,6 +87,11 @@ export function uploadFlowReducer(state, action) {
           mode: "overwrite",
           monthly_excel_path: null,
         },
+        officeReceiverOptions: nextType === "office" ? state.officeReceiverOptions : [],
+        officeReceiverDefaultCity: state.officeReceiverDefaultCity || "",
+        officeReceiverCity: state.officeReceiverDefaultCity || "",
+        officeReceiverLoading: false,
+        officeReceiverError: "",
         formError: "",
         systemError: "",
         rejectedMessage: "",
@@ -92,6 +102,12 @@ export function uploadFlowReducer(state, action) {
 
     case "SET_RUN_DATE":
       return { ...state, runDate: action.value };
+
+    case "SET_OFFICE_RECEIVER_CITY":
+      return {
+        ...state,
+        officeReceiverCity: action.value,
+      };
 
     case "ADD_FILES": {
       const nextFiles = [...state.files, ...action.entries];
@@ -106,9 +122,14 @@ export function uploadFlowReducer(state, action) {
 
     case "REMOVE_FILE": {
       const files = state.files.filter((entry) => entry.id !== action.id);
+      const removedName = typeof action.name === "string" ? action.name.trim() : "";
+      const reviewRows = removedName
+        ? state.reviewRows.filter((row) => normalizeQueueFilename(row?.filename) !== removedName)
+        : state.reviewRows;
       return {
         ...state,
         files,
+        reviewRows,
         phase: files.length ? state.phase : "idle",
       };
     }
@@ -123,6 +144,35 @@ export function uploadFlowReducer(state, action) {
       return {
         ...state,
         systemError: action.message,
+      };
+
+    case "OFFICE_RECEIVER_OPTIONS_LOAD_START":
+      return {
+        ...state,
+        officeReceiverLoading: true,
+        officeReceiverError: "",
+      };
+
+    case "OFFICE_RECEIVER_OPTIONS_LOAD_SUCCESS": {
+      const options = Array.isArray(action.options) ? action.options : [];
+      const defaultCity = action.defaultCity || options[0]?.city || state.officeReceiverDefaultCity || "";
+      const selected = state.officeReceiverCity;
+      const nextCity = options.some((item) => item.city === selected) ? selected : defaultCity;
+      return {
+        ...state,
+        officeReceiverOptions: options,
+        officeReceiverDefaultCity: defaultCity,
+        officeReceiverCity: nextCity,
+        officeReceiverLoading: false,
+        officeReceiverError: "",
+      };
+    }
+
+    case "OFFICE_RECEIVER_OPTIONS_LOAD_FAILURE":
+      return {
+        ...state,
+        officeReceiverLoading: false,
+        officeReceiverError: action.message || "",
       };
 
     case "SET_REVIEW_TEXT":
@@ -172,7 +222,6 @@ export function uploadFlowReducer(state, action) {
     case "POLL_FAILURE":
       return {
         ...state,
-        phase: "failed",
         systemError: action.message,
       };
 
@@ -295,4 +344,13 @@ function formatRunDate(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = String(date.getFullYear());
   return `${day}/${month}/${year}`;
+}
+
+/**
+ * Normalize backend filename for queue matching.
+ * Backend may prefix index like "01_xxx.pdf".
+ * @param {unknown} value
+ */
+function normalizeQueueFilename(value) {
+  return String(value || "").replace(/^\d+_/, "").trim();
 }

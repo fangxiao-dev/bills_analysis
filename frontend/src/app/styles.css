@@ -264,6 +264,26 @@ button {
   background: #eff5ff;
 }
 
+.office-receiver-panel {
+  border: 1px solid #dce5f3;
+  border-radius: 0.7rem;
+  background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
+  padding: 0.72rem;
+}
+
+.office-receiver-grid {
+  display: grid;
+  gap: 0.68rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 980px) {
+  .office-receiver-grid {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.1fr);
+    align-items: end;
+  }
+}
+
 .file-row {
   border-bottom: 1px solid #e3eaf5;
 }
@@ -435,6 +455,11 @@ button {
   outline: none;
 }
 
+.review-cell-input-compact {
+  min-width: 80px;
+  max-width: 110px;
+}
+
 .review-cell-input:focus {
   border-color: #7da5eb;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16);
@@ -455,6 +480,34 @@ button {
   font-size: 0.875rem;
   font-weight: 600;
   text-decoration: none;
+}
+
+.review-skip-icon-btn {
+  margin-right: 0.4rem;
+  color: #f59e0b;
+  cursor: help;
+  font-size: 0.95rem;
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+.review-edit-table td:last-child {
+  white-space: nowrap;
+}
+
+.review-skip-popover {
+  position: fixed;
+  z-index: 1000;
+  width: 280px;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid #f1d090;
+  border-radius: 0.45rem;
+  background: #fff8e6;
+  color: #7a4a02;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
 }
 
 .review-view-link:hover {

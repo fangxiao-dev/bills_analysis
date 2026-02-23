@@ -17,6 +17,7 @@ SYNC_ITEMS=(
   ".claude/rules/"
   ".claude/skills/"
   ".env"
+  ".env.docker"
   "frontend/.env.local"
 )
 

@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { AppFrame } from "../../../app/AppFrame";
@@ -45,6 +46,53 @@ export function BillUploadPage() {
     return "";
   })();
 
+  // Fetch review rows when batch is ready so upload page can show skip_reason warnings.
+  // Guard against re-fetch if already loading or loaded; re-triggers if BATCH_UPDATED resets reviewRows.
+  useEffect(() => {
+    if (!state.batch?.batch_id || state.batch.status !== "review_ready") {
+      return;
+    }
+    if (state.reviewRowsLoading || state.reviewRows.length > 0) {
+      return;
+    }
+    void actions.fetchReviewRows();
+  }, [
+    actions.fetchReviewRows,
+    state.batch?.batch_id,
+    state.batch?.status,
+    state.reviewRows.length,
+    state.reviewRowsLoading,
+  ]);
+
+  // Load office receiver city options when office mode is selected.
+  useEffect(() => {
+    if (state.batchType !== "office") {
+      return;
+    }
+    if (state.officeReceiverLoading || state.officeReceiverOptions.length > 0) {
+      return;
+    }
+    void actions.fetchOfficeReceiverOptions();
+  }, [
+    actions.fetchOfficeReceiverOptions,
+    state.batchType,
+    state.officeReceiverLoading,
+    state.officeReceiverOptions.length,
+  ]);
+
+  // Build filename → skip_reason lookup from review rows for FileQueuePanel warnings.
+  // Backend stores files as "01_original.pdf" (index-prefixed); strip prefix to match entry.name.
+  const skipReasonByName = useMemo(() => {
+    const map = new Map();
+    for (const row of state.reviewRows || []) {
+      if (row.skip_reason && row.filename) {
+        const uiName = row.filename.replace(/^\d+_/, "");
+        map.set(uiName, row.skip_reason);
+      }
+    }
+    return map;
+  }, [state.reviewRows]);
+
   const handleBatchTypeChange = (nextType) => {
     if (nextType === state.batchType) {
       return;
@@ -57,6 +105,17 @@ export function BillUploadPage() {
     }
     actions.setBatchType(nextType);
   };
+
+  const selectedOfficeReceiver = useMemo(() => {
+    if (state.batchType !== "office") {
+      return null;
+    }
+    const fallback = state.officeReceiverOptions[0] || null;
+    return (
+      state.officeReceiverOptions.find((item) => item.city === state.officeReceiverCity) ||
+      fallback
+    );
+  }, [state.batchType, state.officeReceiverCity, state.officeReceiverOptions]);
 
   return (
     <AppFrame>
@@ -113,6 +172,61 @@ export function BillUploadPage() {
             </div>
           ) : (
             <div className="mt-4">
+              <div className="office-receiver-panel mb-4">
+                <div className="office-receiver-grid">
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="font-medium">{t("upload.officeReceiverCityLabel")}</span>
+                    <select
+                      value={state.officeReceiverCity}
+                      onChange={(event) => actions.setOfficeReceiverCity(event.target.value)}
+                      disabled={flags.isBusy || state.officeReceiverLoading || !state.officeReceiverOptions.length}
+                      className="rounded-md border border-ledger-line bg-white px-3 py-2 text-sm"
+                      aria-label={t("upload.officeReceiverCityLabel")}
+                    >
+                      {state.officeReceiverOptions.map((item) => (
+                        <option key={item.city} value={item.city}>
+                          {item.city}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="font-medium">{t("upload.officeReceiverNameLabel")}</span>
+                    <input
+                      type="text"
+                      value={selectedOfficeReceiver?.receiver_name || ""}
+                      readOnly
+                      className="rounded-md border border-ledger-line bg-ledger-paper px-3 py-2 text-sm"
+                      aria-label={t("upload.officeReceiverNameLabel")}
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="font-medium">{t("upload.officeReceiverAddressLabel")}</span>
+                    <input
+                      type="text"
+                      value={selectedOfficeReceiver?.receiver_address || ""}
+                      readOnly
+                      className="rounded-md border border-ledger-line bg-ledger-paper px-3 py-2 text-sm"
+                      aria-label={t("upload.officeReceiverAddressLabel")}
+                    />
+                  </label>
+                </div>
+              </div>
+              {state.officeReceiverLoading ? (
+                <p className="mb-3 text-xs text-ledger-smoke">{t("upload.officeReceiverLoading")}</p>
+              ) : null}
+              {state.officeReceiverError ? (
+                <div className="mb-3">
+                  <AlertBanner tone="error" message={t("upload.officeReceiverLoadError", { reason: state.officeReceiverError })} />
+                </div>
+              ) : null}
+              {!state.officeReceiverOptions.length && !state.officeReceiverLoading && !state.officeReceiverError ? (
+                <div className="mb-3">
+                  <AlertBanner message={t("upload.officeReceiverEmpty")} />
+                </div>
+              ) : null}
               <PdfDropzone
                 onFilesAdded={(files) => actions.addFiles(files, "office")}
                 disabled={flags.isBusy}
@@ -131,7 +245,12 @@ export function BillUploadPage() {
 
           <div className="mt-4">
             <h2 className="mb-2 text-lg font-semibold">{t("upload.itemsToConfirm")}</h2>
-            <FileQueuePanel files={state.files} onRemove={actions.removeFile} batchInputs={state.batch?.inputs} />
+            <FileQueuePanel
+              files={state.files}
+              onRemove={actions.removeFile}
+              batchInputs={state.batch?.inputs}
+              skipReasonByName={skipReasonByName}
+            />
           </div>
 
           {state.formError ? (

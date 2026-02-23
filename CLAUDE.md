@@ -88,11 +88,17 @@ Milestone Status：
 - 规则：`.claude/rules/planning-with-files.md`
 - 操作手册：`plans/workplans/README.md`
 
-## 7.1 Task Worktree Lifecycle Skill
+## 7.1 Task Worktree Lifecycle Skills
 
-当需求涉及 task worktree 生命周期操作（创建 task worktree、同步共享配置、按 README 初始化前后端环境、从 `dev` 同步后回归、最终合并回 `dev`）时，启用 `task-worktree-lifecycle`。
+Worktree 生命周期操作按执行环境拆分为两个独立 SKILL：
 
-- 详细文档：`.agents/skills/task-worktree-lifecycle/SKILL.md`
+- **主干终端**（规划阶段）：说 `确认task`、`写plan`、`创建wt` 等触发 `wt-plan`。
+  涵盖：task 定义对话 → 更新 todo → 生成 plan 三文件 → commit 到主干 → 创建 worktree + sync config。
+  详细文档：`.agents/skills/wt-plan/SKILL.md`
+
+- **wt 终端**（开发阶段）：说 `开工`、`继续开发`、`start task` 等触发 `wt-dev`。
+  涵盖：自动识别 task → 恢复 plan 上下文 → 环境初始化 → sync trunk → 实现 → [PAUSE 人工测试（必经）] → regression gate → 更新计划证据 → merge 回主干（无需切换终端）→ 标记 DONE → 清理 worktree。
+  详细文档：`.agents/skills/wt-dev/SKILL.md`
 
 ## 8. Commands You Should Prefer
 

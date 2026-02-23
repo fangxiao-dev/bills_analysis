@@ -2,19 +2,26 @@
 
 import asyncio
 import json
+import logging
 import os
+import shutil
 from datetime import UTC, datetime
+from math import inf
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
+import fitz
 from openpyxl import Workbook
 
 from bills_analysis.excel_ops import normalize_date, write_datum_cell
 from bills_analysis.integrations.excel_mapper_adapter import map_daily_json_to_excel
+from bills_analysis.integrations.office_receiver_mapping import resolve_expected_receiver_from_metadata
 from bills_analysis.integrations.office_semantics import match_receiver_address, resolve_receiver_ok
 from bills_analysis.models.common import InputFile
 from bills_analysis.models.internal import BatchRecord
 from bills_analysis.services.merge_service import merge_daily, merge_office
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _compress_pdf_for_archive(
@@ -34,6 +41,22 @@ def _compress_pdf_for_archive(
         dpi=dpi,
         name_suffix=name_suffix,
     )
+
+
+def _copy_pdf_for_archive_without_compression(
+    pdf_path: Path,
+    *,
+    dest_dir: Path,
+    name_suffix: str,
+) -> Path:
+    """Copy one source PDF into archive directly when compression is intentionally skipped."""
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    target_path = dest_dir / f"{pdf_path.stem}_{name_suffix}.pdf"
+    if target_path.resolve() == pdf_path.resolve():
+        return target_path
+    shutil.copy2(pdf_path, target_path)
+    return target_path
 
 
 def _analyze_pdf_with_azure(
@@ -88,10 +111,78 @@ def _to_excel_hyperlink(value: Any) -> str | None:
         return str(path)
 
 
-def _resolve_receiver_ok(office_info: dict[str, Any]) -> bool | None:
-    """Normalize Office receiver consistency output to bool using model output and configurable expected receiver."""
-    expected_receiver = os.getenv("OFFICE_EXPECTED_RECEIVER", "Ramen Ippin Dortmund GmbH").strip()
-    expected_address = os.getenv("OFFICE_EXPECTED_RECEIVER_ADDRESS", "Reinoldistr.8 44135 Dortmund").strip()
+def _safe_pdf_page_count(pdf_path: Path) -> int | None:
+    """Read page count defensively and skip tiny placeholder files used in tests."""
+
+    try:
+        # Avoid PyMuPDF native crashes on malformed tiny placeholder PDFs.
+        if pdf_path.stat().st_size < 1024:
+            return None
+    except Exception:
+        return None
+    try:
+        with fitz.open(pdf_path) as doc:
+            return int(doc.page_count)
+    except Exception:
+        return None
+
+
+def _read_int_env(name: str, default: int, *, minimum: int | None = None) -> int:
+    """Read integer env var defensively and clamp to optional minimum."""
+
+    try:
+        value = int(os.getenv(name, str(default)))
+    except Exception:
+        value = default
+    if minimum is not None:
+        value = max(minimum, value)
+    return value
+
+
+def _read_float_env(name: str, default: float, *, minimum: float | None = None) -> float:
+    """Read float env var defensively and clamp to optional minimum."""
+
+    try:
+        value = float(os.getenv(name, str(default)))
+    except Exception:
+        value = default
+    if minimum is not None:
+        value = max(minimum, value)
+    return value
+
+
+class _AsyncRateLimiter:
+    """Simple coroutine rate limiter enforcing a minimum start interval."""
+
+    def __init__(self, min_interval_sec: float) -> None:
+        """Initialize limiter with monotonic-clock spacing interval."""
+
+        self.min_interval_sec = max(0.0, min_interval_sec)
+        self._lock = asyncio.Lock()
+        self._next_allowed_at = -inf
+
+    async def wait_turn(self) -> None:
+        """Wait until this caller can start, preserving call order under lock."""
+
+        if self.min_interval_sec <= 0:
+            return
+        loop = asyncio.get_running_loop()
+        async with self._lock:
+            now = loop.time()
+            if now < self._next_allowed_at:
+                await asyncio.sleep(self._next_allowed_at - now)
+            self._next_allowed_at = loop.time() + self.min_interval_sec
+
+
+def _resolve_receiver_ok(
+    office_info: dict[str, Any],
+    *,
+    batch_metadata: dict[str, Any] | None = None,
+) -> bool | None:
+    """Normalize Office receiver consistency output to bool using city-resolved expected receiver."""
+    expected = resolve_expected_receiver_from_metadata(batch_metadata)
+    expected_receiver = expected["receiver_name"].strip()
+    expected_address = expected["receiver_address"].strip()
     if not expected_receiver or not expected_address:
         return None
     return resolve_receiver_ok(
@@ -101,8 +192,12 @@ def _resolve_receiver_ok(office_info: dict[str, Any]) -> bool | None:
     )
 
 
-def _resolve_receiver_address_ok(office_info: dict[str, Any]) -> bool | None:
-    """Normalize Office receiver address consistency output to bool using model output and configurable expected address."""
+def _resolve_receiver_address_ok(
+    office_info: dict[str, Any],
+    *,
+    batch_metadata: dict[str, Any] | None = None,
+) -> bool | None:
+    """Normalize Office receiver address consistency output to bool using city-resolved expected address."""
 
     receiver_address = office_info.get("receiver_address")
     if not isinstance(receiver_address, str):
@@ -110,53 +205,109 @@ def _resolve_receiver_address_ok(office_info: dict[str, Any]) -> bool | None:
     address_text = receiver_address.strip()
     if not address_text:
         return None
-    expected_address = os.getenv("OFFICE_EXPECTED_RECEIVER_ADDRESS", "Reinoldistr.8 44135 Dortmund").strip()
+    expected = resolve_expected_receiver_from_metadata(batch_metadata)
+    expected_address = expected["receiver_address"].strip()
     if not expected_address:
         return None
     return match_receiver_address(address_text, expected_address)
+
+
+def _copy_pdf_to_organized_dir(
+    *,
+    compressed_pdf: Path,
+    organized_root: Path,
+    category: str,
+    run_date: str,
+    extracted_result: dict[str, Any],
+) -> Path:
+    """Copy one compressed PDF into legacy-organized directory with legacy naming rules."""
+
+    from bills_analysis.integrations.azure_pipeline_adapter import (
+        get_archive_subdir_name,
+        get_compressed_pdf_name,
+    )
+
+    organized_dir = organized_root / get_archive_subdir_name(run_date, category)
+    organized_dir.mkdir(parents=True, exist_ok=True)
+    target_name = get_compressed_pdf_name(category, extracted_result, run_date) or compressed_pdf.name
+    target_path = organized_dir / target_name
+    if target_path.resolve() == compressed_pdf.resolve():
+        return target_path
+    shutil.copy2(compressed_pdf, target_path)
+    return target_path
 
 
 class LocalPipelineBackend:
     """Local backend adapter that executes preprocess + extraction flow."""
 
     def __init__(self, *, root: Path | None = None) -> None:
-        """Initialize output root and per-file timeout controls."""
+        """Initialize output root and extraction concurrency controls."""
 
         self.root = (root or (Path("outputs") / "webapp")).resolve()
-        self.file_timeout_sec = float(os.getenv("BACKEND_FILE_TIMEOUT_SEC", "180"))
+        self.extract_concurrency = _read_int_env("BACKEND_EXTRACT_CONCURRENCY", 4, minimum=1)
+        self.extract_min_interval_sec = _read_float_env("BACKEND_EXTRACT_MIN_INTERVAL_SEC", 0.0, minimum=0.0)
+        self.compress_skip_mb = _read_float_env("BACKEND_COMPRESS_SKIP_MB", 1.0, minimum=0.1)
+        self.di_compressed_input_mb = _read_float_env("BACKEND_DI_COMPRESSED_INPUT_MB", 3.0, minimum=0.1)
 
-    async def process_batch(self, batch: BatchRecord) -> dict[str, Any]:
-        """Process uploaded PDFs and return artifacts plus persisted review rows."""
+    async def process_batch(
+        self,
+        batch: BatchRecord,
+        *,
+        on_file_done: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    ) -> dict[str, Any]:
+        """Process uploaded PDFs with per-file completion callbacks and summary."""
 
         out_dir = self.root / batch.batch_id
         out_dir.mkdir(parents=True, exist_ok=True)
         archive_root = out_dir / "archive"
         archive_root.mkdir(parents=True, exist_ok=True)
-
+        organized_root = self.root.parent / "organized"
+        organized_root.mkdir(parents=True, exist_ok=True)
         now = datetime.now(UTC).isoformat()
         results_path = out_dir / "results.json"
         review_path = out_dir / "review_rows.json"
+        max_pages = 4
+        config_path = Path("tests") / "config.json"
+        try:
+            config_payload = json.loads(config_path.read_text(encoding="utf-8"))
+            max_pages = int(config_payload.get("max_pages", max_pages))
+        except Exception:
+            max_pages = 4
+        extract_semaphore = asyncio.Semaphore(self.extract_concurrency)
+        extract_rate_limiter = _AsyncRateLimiter(self.extract_min_interval_sec)
 
         tasks = [
-            self._process_one_file_async(
-                row_id=f"row-{idx:04d}",
-                batch=batch,
-                item=item,
-                archive_root=archive_root,
+            asyncio.create_task(
+                self._process_one_file_with_timeout(
+                    row_id=f"row-{idx:04d}",
+                    batch=batch,
+                    item=item,
+                    archive_root=archive_root,
+                    organized_root=organized_root,
+                    max_pages=max_pages,
+                    extract_semaphore=extract_semaphore,
+                    extract_rate_limiter=extract_rate_limiter,
+                )
             )
             for idx, item in enumerate(batch.inputs, start=1)
         ]
-        rows = await asyncio.gather(*tasks)
-
-        errors = []
-        for row in rows:
-            if self._row_has_external_failure(row):
-                errors.append(
-                    f"{row.get('filename', 'unknown')}: "
-                    f"{row.get('extract_error') or row.get('semantic_error') or row.get('error')}"
-                )
-        if errors:
-            raise RuntimeError("; ".join(errors))
+        rows: list[dict[str, Any]] = []
+        for completed in asyncio.as_completed(tasks):
+            row = await completed
+            rows.append(row)
+            status = self._row_status(row)
+            LOGGER.info(
+                "file_done row_id=%s filename=%s status=%s markers=%s skip_reason=%r error=%r",
+                row.get("row_id"),
+                row.get("filename"),
+                status,
+                row.get("markers"),
+                row.get("skip_reason"),
+                self._row_error(row),
+            )
+            if on_file_done is not None:
+                await on_file_done(self._build_file_done_event(row))
+        rows.sort(key=lambda row: str(row.get("row_id") or ""))
 
         results_payload = {
             "batch_id": batch.batch_id,
@@ -174,6 +325,7 @@ class LocalPipelineBackend:
                 "result": row["result"],
                 "score": row["score"],
                 "preview_path": row.get("preview_path"),
+                "skip_reason": row.get("skip_reason"),
             }
             for row in rows
         ]
@@ -185,14 +337,67 @@ class LocalPipelineBackend:
             json.dumps(review_payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        extracted_count = sum(1 for row in rows if self._row_status(row) == "extracted")
+        failed_count = sum(1 for row in rows if self._row_status(row) == "failed")
         return {
             "artifacts": {
                 "result_json_path": str(results_path),
                 "review_json_path": str(review_path),
                 "archive_root": str(archive_root),
+                "organized_root": str(organized_root),
             },
             "review_rows": review_payload,
+            "processing_summary": {
+                "total_count": len(rows),
+                "extracted_count": extracted_count,
+                "failed_count": failed_count,
+            },
         }
+
+    async def _process_one_file_with_timeout(
+        self,
+        *,
+        row_id: str,
+        batch: BatchRecord,
+        item: InputFile,
+        archive_root: Path,
+        organized_root: Path,
+        max_pages: int,
+        extract_semaphore: asyncio.Semaphore,
+        extract_rate_limiter: _AsyncRateLimiter,
+    ) -> dict[str, Any]:
+        """Execute one file processing without file-level timeout short-circuit."""
+
+        return await self._process_one_file_async(
+            row_id=row_id,
+            batch=batch,
+            item=item,
+            archive_root=archive_root,
+            organized_root=organized_root,
+            max_pages=max_pages,
+            extract_semaphore=extract_semaphore,
+            extract_rate_limiter=extract_rate_limiter,
+        )
+
+    async def _run_extract_with_controls(
+        self,
+        *,
+        pdf_path: Path,
+        model_id: str,
+        return_fields: bool,
+        extract_semaphore: asyncio.Semaphore,
+        extract_rate_limiter: _AsyncRateLimiter,
+    ) -> Any:
+        """Run extraction under shared concurrency and rate controls."""
+
+        async with extract_semaphore:
+            await extract_rate_limiter.wait_turn()
+            return await asyncio.to_thread(
+                _analyze_pdf_with_azure,
+                pdf_path,
+                model_id=model_id,
+                return_fields=return_fields,
+            )
 
     async def _process_one_file_async(
         self,
@@ -201,40 +406,12 @@ class LocalPipelineBackend:
         batch: BatchRecord,
         item: InputFile,
         archive_root: Path,
+        organized_root: Path,
+        max_pages: int,
+        extract_semaphore: asyncio.Semaphore,
+        extract_rate_limiter: _AsyncRateLimiter,
     ) -> dict[str, Any]:
-        """Execute one file processing in thread pool with timeout guard."""
-
-        try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(
-                    self._process_one_file,
-                    row_id=row_id,
-                    batch=batch,
-                    item=item,
-                    archive_root=archive_root,
-                ),
-                timeout=self.file_timeout_sec,
-            )
-        except asyncio.TimeoutError:
-            source_name = Path(item.path).name
-            return {
-                "row_id": row_id,
-                "filename": source_name,
-                "category": (item.category or "office").lower(),
-                "result": {"run_date": batch.run_date},
-                "score": {},
-                "extract_error": f"file processing timeout ({self.file_timeout_sec}s)",
-            }
-
-    def _process_one_file(
-        self,
-        *,
-        row_id: str,
-        batch: BatchRecord,
-        item: InputFile,
-        archive_root: Path,
-    ) -> dict[str, Any]:
-        """Run compression + extraction for one input file with safe fallbacks."""
+        """Run page precheck plus parallel compression/extraction for one input file."""
 
         source_path = Path(item.path)
         category = (item.category or "office").lower()
@@ -245,45 +422,116 @@ class LocalPipelineBackend:
             "result": {"run_date": batch.run_date},
             "score": {},
         }
+        markers: list[str] = []
 
         if not source_path.exists():
             row["error"] = f"missing input file: {source_path}"
             return row
 
+        page_count = await asyncio.to_thread(_safe_pdf_page_count, source_path)
+        should_extract = True
+        force_skip_compress_for_over_pages = False
+        if page_count is not None and page_count > max_pages:
+            markers.append("skipped-di")
+            row["skip_reason"] = f"page_count={page_count} > max_pages={max_pages}"
+            should_extract = False
+            force_skip_compress_for_over_pages = True
+        file_size_mb = 0.0
         try:
-            compressed_path = _compress_pdf_for_archive(
-                source_path,
-                dest_dir=archive_root / category,
-                dpi=300,
-                name_suffix=batch.batch_id[:8],
+            file_size_mb = source_path.stat().st_size / (1024 * 1024)
+        except Exception:
+            file_size_mb = 0.0
+        should_skip_compress = force_skip_compress_for_over_pages or (file_size_mb < self.compress_skip_mb)
+        use_compressed_for_di = file_size_mb > self.di_compressed_input_mb
+        should_compress = not should_skip_compress
+        if should_skip_compress and "skip-compress" not in markers:
+            markers.append("skip-compress")
+        if markers:
+            row["markers"] = markers
+
+        model_id = "prebuilt-invoice" if category == "office" else "prebuilt-receipt"
+        if should_compress:
+            compress_task = asyncio.create_task(
+                asyncio.to_thread(
+                    _compress_pdf_for_archive,
+                    source_path,
+                    dest_dir=archive_root / category,
+                    dpi=300,
+                    name_suffix=batch.batch_id[:8],
+                )
             )
+        else:
+            compress_task = asyncio.create_task(
+                asyncio.to_thread(
+                    _copy_pdf_for_archive_without_compression,
+                    source_path,
+                    dest_dir=archive_root / category,
+                    name_suffix=batch.batch_id[:8],
+                )
+            )
+        extract_task: asyncio.Task[Any] | None = None
+        if should_extract:
+            if use_compressed_for_di:
+                async def _extract_after_compress() -> Any:
+                    """Wait for compressed artifact and then run DI on compressed path."""
+
+                    compressed_input = await compress_task
+                    return await self._run_extract_with_controls(
+                        pdf_path=Path(compressed_input),
+                        model_id=model_id,
+                        return_fields=(category == "office"),
+                        extract_semaphore=extract_semaphore,
+                        extract_rate_limiter=extract_rate_limiter,
+                    )
+
+                extract_task = asyncio.create_task(_extract_after_compress())
+            else:
+                extract_task = asyncio.create_task(
+                    self._run_extract_with_controls(
+                        pdf_path=source_path,
+                        model_id=model_id,
+                        return_fields=(category == "office"),
+                        extract_semaphore=extract_semaphore,
+                        extract_rate_limiter=extract_rate_limiter,
+                    )
+                )
+
+        try:
+            compressed_path = await compress_task
             row["preview_path"] = str(compressed_path)
         except Exception as exc:
             row["archive_error"] = str(exc)
 
-        model_id = "prebuilt-invoice" if category == "office" else "prebuilt-receipt"
-        try:
-            if category == "office":
-                azure_result, office_fields = _analyze_pdf_with_azure(
-                    source_path,
-                    model_id=model_id,
-                    return_fields=True,
+        if extract_task is not None:
+            try:
+                extract_output = await extract_task
+                if category == "office":
+                    azure_result, office_fields = extract_output
+                    self._fill_office_row(
+                        row,
+                        azure_result,
+                        office_fields,
+                        batch_metadata=batch.metadata,
+                        batch_out_dir=archive_root.parent,
+                    )
+                else:
+                    self._fill_daily_row(row, extract_output)
+            except Exception as exc:
+                row["extract_error"] = str(exc)
+
+        preview_path_raw = row.get("preview_path")
+        if isinstance(preview_path_raw, str) and preview_path_raw.strip():
+            try:
+                organized_path = _copy_pdf_to_organized_dir(
+                    compressed_pdf=Path(preview_path_raw),
+                    organized_root=organized_root,
+                    category=category,
+                    run_date=batch.run_date or "",
+                    extracted_result=row.get("result") or {},
                 )
-                self._fill_office_row(
-                    row,
-                    azure_result,
-                    office_fields,
-                    batch_out_dir=archive_root.parent,
-                )
-            else:
-                azure_result = _analyze_pdf_with_azure(
-                    source_path,
-                    model_id=model_id,
-                    return_fields=False,
-                )
-                self._fill_daily_row(row, azure_result)
-        except Exception as exc:
-            row["extract_error"] = str(exc)
+                row["organized_path"] = str(organized_path)
+            except Exception as exc:
+                row["organize_error"] = str(exc)
 
         return row
 
@@ -307,6 +555,7 @@ class LocalPipelineBackend:
         azure_result: dict[str, Any],
         office_fields: dict[str, Any],
         *,
+        batch_metadata: dict[str, Any] | None,
         batch_out_dir: Path,
     ) -> None:
         """Map Azure invoice fields and optional Office semantics into review row."""
@@ -329,9 +578,15 @@ class LocalPipelineBackend:
             row["result"]["type"] = office_info.get("purpose")
             row["result"]["sender"] = office_info.get("sender")
             row["result"]["receiver_name"] = office_info.get("receiver")
-            row["result"]["receiver_ok"] = _resolve_receiver_ok(office_info)
+            row["result"]["receiver_ok"] = _resolve_receiver_ok(
+                office_info,
+                batch_metadata=batch_metadata,
+            )
             row["result"]["receiver_address"] = office_info.get("receiver_address")
-            row["result"]["receiver_address_ok"] = _resolve_receiver_address_ok(office_info)
+            row["result"]["receiver_address_ok"] = _resolve_receiver_address_ok(
+                office_info,
+                batch_metadata=batch_metadata,
+            )
         except Exception as exc:
             row["semantic_error"] = str(exc)
 
@@ -357,6 +612,33 @@ class LocalPipelineBackend:
         """Return whether row contains extraction/semantic external-call failures."""
 
         return bool(row.get("error") or row.get("extract_error") or row.get("semantic_error"))
+
+    def _row_status(self, row: dict[str, Any]) -> str:
+        """Map one backend row payload into the persisted input status contract."""
+
+        if row.get("skip_reason"):
+            return "skipped"
+        return "failed" if self._row_has_external_failure(row) else "extracted"
+
+    def _row_error(self, row: dict[str, Any]) -> str | None:
+        """Extract the canonical per-file error message from processing row payload."""
+
+        error_value = row.get("error") or row.get("extract_error") or row.get("semantic_error")
+        if error_value is None:
+            return None
+        text = str(error_value).strip()
+        return text or None
+
+    def _build_file_done_event(self, row: dict[str, Any]) -> dict[str, Any]:
+        """Build worker callback payload for one completed file processing row."""
+
+        return {
+            "row_id": str(row.get("row_id") or ""),
+            "filename": str(row.get("filename") or ""),
+            "category": str(row.get("category") or ""),
+            "status": self._row_status(row),
+            "error": self._row_error(row),
+        }
 
     async def merge_batch(self, batch: BatchRecord, payload: dict[str, Any]) -> dict[str, Any]:
         """Run real local Excel merge and return merged file artifact metadata."""
@@ -475,7 +757,6 @@ class LocalPipelineBackend:
             "Netto",
             "Steuernummer",
             "Is Receiver OK",
-            "Is Receiver Address OK",
             "need review",
             "Rechnung Scannen",
         ]
@@ -498,15 +779,15 @@ class LocalPipelineBackend:
                 result.get("netto"),
                 result.get("tax_id"),
                 result.get("receiver_ok"),
-                result.get("receiver_address_ok"),
                 bool(row.get("need review", False)),
                 row.get("preview_path") or row.get("preview_url"),
             ]
             ws.append(excel_row)
             write_datum_cell(ws.cell(row=row_idx, column=1), datum)
-            link = _to_excel_hyperlink(excel_row[9])
+            scan_col_idx = headers.index("Rechnung Scannen")
+            link = _to_excel_hyperlink(excel_row[scan_col_idx])
             if link:
-                link_cell = ws.cell(row=row_idx, column=10)
+                link_cell = ws.cell(row=row_idx, column=scan_col_idx + 1)
                 link_cell.value = "check pdf"
                 link_cell.hyperlink = link
             row_idx += 1
@@ -515,3 +796,8 @@ class LocalPipelineBackend:
             raise ValueError("No office review rows available for merge")
 
         wb.save(out_path)
+
+
+
+
+

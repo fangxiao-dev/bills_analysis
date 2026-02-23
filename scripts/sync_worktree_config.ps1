@@ -18,6 +18,7 @@ $syncItems = @(
     ".claude/rules/",
     ".claude/skills/",
     ".env",
+    ".env.docker",
     "frontend/.env.local"
 )
 

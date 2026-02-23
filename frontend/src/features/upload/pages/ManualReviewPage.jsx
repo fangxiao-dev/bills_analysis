@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import { AppFrame } from "../../../app/AppFrame";
 import { API_BASE_URL } from "../../../config/env";
 import { AlertBanner } from "../../../shared/ui/AlertBanner";
@@ -24,6 +23,7 @@ const OFFICE_TYPE_OPTIONS = [
   "Personalkosten",
   "Gerät&Geschirr",
   "Reparatur",
+  "Reinigung",
   "Getränke",
   "Bank&SumUp&Linzen",
   "Service&Andere",
@@ -34,7 +34,6 @@ const OFFICE_TYPE_OPTIONS = [
  * Manual review page for editing row-level fields and controlling merge actions.
  */
 export function ManualReviewPage() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const { client, state, actions, flags } = useUploadFlowContext();
   const effectiveBatchType = state.batch?.type || state.batchType || "daily";
@@ -68,7 +67,7 @@ export function ManualReviewPage() {
       { key: "brutto", label: t("review.columns.brutto") },
       { key: "netto", label: t("review.columns.netto") },
       { key: "tax_id", label: t("review.columns.tax_id") },
-      { key: "receiver_ok", label: t("review.columns.receiver_ok") },
+      { key: "receiver_ok", label: t("review.columns.receiver_ok"), inputType: "select", options: ["False", "True"] },
     ],
     [t],
   );
@@ -135,6 +134,21 @@ export function ManualReviewPage() {
       [section]: previous[section].map((row) => (row.id === rowId ? { ...row, [key]: value } : row)),
     }));
   }, []);
+
+  // Remove a row from draft; excluded from merge payload (JSON on disk unchanged).
+  const onRemoveRow = useCallback((section, rowId) => {
+    const row = draft[section]?.find((item) => item.id === rowId);
+    if (row) {
+      const matchedFile = state.files.find((entry) => entry.id === row.id || entry.name === row.filename);
+      if (matchedFile) {
+        actions.removeFile(matchedFile.id);
+      }
+    }
+    setDraft((previous) => ({
+      ...previous,
+      [section]: previous[section].filter((row) => row.id !== rowId),
+    }));
+  }, [actions, draft, state.files]);
 
   const totalRows = useMemo(
     () => draft.bar.length + draft.zbon.length + draft.office.length,
@@ -339,6 +353,7 @@ export function ManualReviewPage() {
           columns={barColumns}
           onChangeCell={(rowId, key, value) => onChangeCell("bar", rowId, key, value)}
           onViewRow={onViewRow}
+          onRemoveRow={(rowId) => onRemoveRow("bar", rowId)}
         />
 
         <ReviewCategoryTable
@@ -348,6 +363,7 @@ export function ManualReviewPage() {
           columns={zbonColumns}
           onChangeCell={(rowId, key, value) => onChangeCell("zbon", rowId, key, value)}
           onViewRow={onViewRow}
+          onRemoveRow={(rowId) => onRemoveRow("zbon", rowId)}
         />
 
         <ReviewCategoryTable
@@ -357,6 +373,7 @@ export function ManualReviewPage() {
           columns={officeColumns}
           onChangeCell={(rowId, key, value) => onChangeCell("office", rowId, key, value)}
           onViewRow={onViewRow}
+          onRemoveRow={(rowId) => onRemoveRow("office", rowId)}
         />
 
         <section className="ledger-card p-4">
@@ -466,9 +483,6 @@ export function ManualReviewPage() {
                 {t("review.openMergedResult")}
               </Button>
             ) : null}
-            <Button type="button" variant="ghost" onClick={() => navigate("/")}>
-              {t("common.backToUpload")}
-            </Button>
             {showRetryMerge ? (
               <Button type="button" variant="danger" onClick={() => void onRetryMerge()} disabled={flags.isBusy}>
                 {t("review.retryMerge")}
@@ -590,16 +604,17 @@ function buildDraftRowsFromBackend(rows, runDate, previous) {
     const rowId = normalizeCellValue(row.row_id, `${category || "unknown"}:${filename}:${index}`);
     const result = row.result && typeof row.result === "object" ? row.result : {};
     const current = previousMap.get(rowId);
-    const common = {
-      id: rowId,
-      category,
-      filename,
-      preview_url: normalizeCellValue(row.preview_url, ""),
-      preview_path: normalizeCellValue(row.preview_path, ""),
-      path: normalizeCellValue(row.path, ""),
-      score: row.score && typeof row.score === "object" ? row.score : {},
-      raw_result: result,
-    };
+      const common = {
+        id: rowId,
+        category,
+        filename,
+        preview_url: normalizeCellValue(row.preview_url, ""),
+        preview_path: normalizeCellValue(row.preview_path, ""),
+        path: normalizeCellValue(row.path, ""),
+        skip_reason: typeof row.skip_reason === "string" ? row.skip_reason : "",
+        score: row.score && typeof row.score === "object" ? row.score : {},
+        raw_result: result,
+      };
 
     if (category === "bar") {
       draft.bar.push({

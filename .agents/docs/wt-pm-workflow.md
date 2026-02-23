@@ -109,35 +109,34 @@ API schema 作为前后端（或模块间）的集成边界。Contract 一旦冻
 
 ---
 
-## 4. Three-Environment View
+## 4. Two-Environment View
 
-以**运行环境**为维度理解整个生命周期，可以划分为三个阶段：
+以**运行环境**为维度理解整个生命周期，可以划分为两个阶段。每个环境对应一个专属 SKILL：
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Environment 1: Trunk (dev/main) — 规划                          │
+│ Environment 1: Trunk (dev/main) — 规划          [SKILL: wt-plan]│
 │                                                                  │
-│  创建 UNPLANNED 条目 → quick-plan 三文件 → PLANNED              │
-│  → commit 规划产出物到 trunk → 触发 Environment 2               │
+│  task 定义对话 → 更新 todo_current → quick-plan 三文件          │
+│  → commit 规划产出物到 trunk → git worktree add → sync config   │
 └──────────────────────────────┬──────────────────────────────────┘
                                │ git worktree add
 ┌──────────────────────────────▼──────────────────────────────────┐
-│ Environment 2: Task Worktree — 开发                              │
+│ Environment 2: Task Worktree — 开发              [SKILL: wt-dev] │
 │                                                                  │
-│  初始化环境 → 实现功能 → Sync trunk → Regression gate           │
-│  → 更新 progress/findings → 标记 DONE → 触发 Environment 3      │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │ git merge --no-ff
-┌──────────────────────────────▼──────────────────────────────────┐
-│ Environment 3: Trunk (dev/main) — 集成                          │
-│                                                                  │
-│  合并 task branch → 手动全量 smoke test → 清理 worktree          │
+│  恢复 plan 上下文 → 初始化环境 → Sync trunk → 实现              │
+│  → [PAUSE 人工测试] → Regression gate → 更新计划证据            │
+│  → git -C <trunk_path> merge --no-ff → 标记 DONE（无需切终端）  │
+│  → 清理 worktree                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+> **终端映射**：`wt-plan` 在主干终端执行；`wt-dev` 在 task worktree 终端执行，包含从 wt 直接操作主干 merge 的能力（`git -C <trunk_path>`），全程无需切换终端。
+
 **关键设计意图：**
 - **规划先于 worktree**：plan 文件必须 commit 到 trunk 后再创建 worktree，确保 worktree 天然携带最新规划快照，也使规划有独立的审计轨迹。
-- **自动化 vs 手动验证分离**：Regression gate（自动化）在 worktree 内完成；合并后的手动全量 smoke test 在 trunk 上执行，作为最终验收门，两者职责不同，不可互相替代。
+- **人工测试暂停节点**：`wt-dev` 在实现完成后输出测试清单并等待确认，自动化测试不替代人工验证。
+- **自动化 vs 手动验证分离**：Regression gate（自动化）在 worktree 内完成；人工测试是合并前必经门，不可跳过。
 
 ---
 
@@ -153,20 +152,20 @@ API schema 作为前后端（或模块间）的集成边界。Contract 一旦冻
 
 **约束**：`PLANNED` 和 `DONE` 状态必须绑定 `plan_id`。一个 `task_id` 同时只允许一个活跃 plan。
 
-### 九阶段 Worktree 生命周期
+### 十阶段 Worktree 生命周期
 
-| 阶段 | 环境 | 操作者 | 说明 |
-|------|------|--------|------|
-| 1. Task Creation & Planning | Trunk | PM/Executor | 在 `plans/todo_current.md` 创建 `UNPLANNED` 条目；运行 `quick-plan` 生成三文件；状态升为 `PLANNED` |
-| 2. Commit Plan to Trunk | Trunk | Executor | `git commit` 规划产出物（`todo_current.md` + 三 plan 文件）到 trunk，形成独立审计节点 |
-| 3. Worktree Setup | Trunk → Worktree | Executor | 新建时：`git worktree add -b feat/<id>-<slug> <path> dev`；续做时：跳过 add；两种情况都必须在 trunk 侧执行共享配置同步（`sync_worktree_config`） |
-| 4. Environment Init | Worktree | Executor | `uv sync` + `pnpm install`；最小可运行检查 |
-| 5. Implementation | Worktree | Executor | 编码、单元测试、迭代 |
-| 6. Sync Trunk | Worktree | Executor | `git merge dev`，解决冲突 |
-| 7. Regression Gate | Worktree | Executor | `pytest tests/test_api_schema_v1.py` + `pnpm test` |
-| 8. Update Plan + Mark DONE | Worktree | Executor | 更新 `progress/findings`；`plan_tracker set-status --status DONE` |
-| 9. Merge & Cleanup | Trunk | Executor | `git merge --no-ff feat/<id>-<slug>`；删除 worktree |
-| 10. Manual Verification | Trunk | Human | 启动应用，端到端手动 smoke test；确认无回归 |
+| 阶段 | 环境 | SKILL | 操作者 | 说明 |
+|------|------|-------|--------|------|
+| 1. Task Definition Dialogue | Trunk | `wt-plan` | PM/Executor | 多轮对话确认任务目标、范围、验收标准 |
+| 2. Task Creation & Planning | Trunk | `wt-plan` | Executor | 更新 `plans/todo_current.md`；`quick-plan` 生成三文件；状态升为 `PLANNED` |
+| 3. Commit Plan to Trunk | Trunk | `wt-plan` | Executor | `git commit` 规划产出物（`todo_current.md` + 三 plan 文件）到 trunk，形成独立审计节点 |
+| 4. Worktree Setup | Trunk | `wt-plan` | Executor | 新建：`git worktree add -b feat/<id>-<slug>`；续做：跳过 add；两种情况都执行 `sync_worktree_config` |
+| 5. Environment Init | Worktree | `wt-dev` | Executor | `uv sync` + `pnpm install`；最小可运行检查（首次运行时执行） |
+| 6. Sync Trunk + Regression | Worktree | `wt-dev` | Executor | `git merge dev`，解决冲突；`pytest` + `pnpm test` |
+| 7. Implementation | Worktree | `wt-dev` | Executor | 编码、单元测试、迭代；每子步骤后更新 `progress.md` |
+| 8. [PAUSE] Manual Testing | Worktree | `wt-dev` | Human | SKILL 输出测试清单后等待；人工确认通过后继续 |
+| 9. Final Regression + Plan Evidence | Worktree | `wt-dev` | Executor | 全量回归；更新 `progress/findings`，保持任务为 `PLANNED` |
+| 10. Merge + Mark DONE + Cleanup | Worktree → Trunk | `wt-dev` | Executor | `git -C <trunk_path> merge --no-ff feat/<id>-<slug>` 成功后 `set-status DONE`；清理 worktree |
 
 ---
 

@@ -41,12 +41,31 @@ function buildBaseContext() {
       removeFile: vi.fn(),
       submitBatch: vi.fn(async () => true),
       retryPolling: vi.fn(),
+      fetchReviewRows: vi.fn(async () => []),
+      fetchOfficeReceiverOptions: vi.fn(async () => ({
+        default_city: "Dortmund",
+        options: [
+          {
+            city: "Dortmund",
+            receiver_name: "Ramen Ippin Dortmund GmbH",
+            receiver_address: "Reinoldistr.8 44135 Dortmund",
+          },
+        ],
+      })),
+      setOfficeReceiverCity: vi.fn(),
     },
     state: {
       phase: "ready",
       batchType: "daily",
       runDate: "14/02/2026",
       files: [{ id: "1", name: "a.pdf", size: 10, category: "bar" }],
+      reviewRows: [],
+      reviewRowsLoading: false,
+      officeReceiverOptions: [],
+      officeReceiverDefaultCity: "Dortmund",
+      officeReceiverCity: "Dortmund",
+      officeReceiverLoading: false,
+      officeReceiverError: "",
       batch: null,
       rejectedMessage: "",
       formError: "",
@@ -98,5 +117,26 @@ describe("BillUploadPage status messaging", () => {
     expect(retryBtn).toBeEnabled();
     fireEvent.click(retryBtn);
     expect(retryPolling).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders office receiver city selector and read-only address field", () => {
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        batchType: "office",
+        officeReceiverOptions: [
+          {
+            city: "Dortmund",
+            receiver_name: "Ramen Ippin Dortmund GmbH",
+            receiver_address: "Reinoldistr.8 44135 Dortmund",
+          },
+        ],
+        officeReceiverCity: "Dortmund",
+      },
+    });
+
+    expect(screen.getByLabelText("City")).toBeInTheDocument();
+    expect(screen.getByLabelText("Receiver Name")).toHaveValue("Ramen Ippin Dortmund GmbH");
+    expect(screen.getByLabelText("Receiver Address")).toHaveValue("Reinoldistr.8 44135 Dortmund");
   });
 });

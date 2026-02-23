@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
 from bills_analysis.integrations.container import AppContainer, build_container
+from bills_analysis.integrations.office_receiver_mapping import get_office_receiver_options as load_office_receiver_options
 from bills_analysis.models.api_requests import (
     CreateBatchRequest,
     CreateBatchUploadForm,
@@ -29,6 +30,8 @@ from bills_analysis.models.api_responses import (
     CreateBatchUploadTaskResponse,
     MergeSourceLocalResponse,
     MergeTaskResponse,
+    OfficeReceiverOption,
+    OfficeReceiverOptionsResponse,
     ReportErrorResponse,
 )
 from bills_analysis.models.common import InputFile
@@ -188,6 +191,28 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get(
+    "/v1/batches/office-receiver-options",
+    response_model=OfficeReceiverOptionsResponse,
+)
+async def get_office_receiver_options() -> OfficeReceiverOptionsResponse:
+    """Return read-only office receiver city options for upload UI."""
+
+    payload = load_office_receiver_options()
+    options = [
+        OfficeReceiverOption(
+            city=str(item.get("city") or ""),
+            receiver_name=str(item.get("receiver_name") or ""),
+            receiver_address=str(item.get("receiver_address") or ""),
+        )
+        for item in payload.get("options") or []
+    ]
+    return OfficeReceiverOptionsResponse(
+        default_city=str(payload.get("default_city") or ""),
+        options=options,
+    )
+
+
 @app.post("/v1/batches", response_model=BatchResponse)
 async def create_batch(req: CreateBatchRequest) -> BatchResponse:
     """Create a batch and enqueue process task."""
@@ -331,6 +356,7 @@ async def get_batch_review_rows(batch_id: str, request: Request) -> BatchReviewR
                 result=dict(row.get("result") or {}),
                 score=dict(row.get("score") or {}),
                 preview_url=preview_url,
+                skip_reason=row.get("skip_reason") or None,
             )
         )
     return BatchReviewRowsResponse(batch_id=batch.batch_id, status=batch.status, rows=items)
