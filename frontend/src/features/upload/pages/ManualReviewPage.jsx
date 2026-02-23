@@ -137,11 +137,18 @@ export function ManualReviewPage() {
 
   // Remove a row from draft; excluded from merge payload (JSON on disk unchanged).
   const onRemoveRow = useCallback((section, rowId) => {
+    const row = draft[section]?.find((item) => item.id === rowId);
+    if (row) {
+      const matchedFile = state.files.find((entry) => entry.id === row.id || entry.name === row.filename);
+      if (matchedFile) {
+        actions.removeFile(matchedFile.id);
+      }
+    }
     setDraft((previous) => ({
       ...previous,
       [section]: previous[section].filter((row) => row.id !== rowId),
     }));
-  }, []);
+  }, [actions, draft, state.files]);
 
   const totalRows = useMemo(
     () => draft.bar.length + draft.zbon.length + draft.office.length,

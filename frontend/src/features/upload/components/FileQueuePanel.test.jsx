@@ -3,6 +3,30 @@ import { describe, expect, it, vi } from "vitest";
 import { FileQueuePanel } from "./FileQueuePanel.jsx";
 
 describe("FileQueuePanel warning popover", () => {
+  it("keeps status bound to filename after queue item deletion changes index", () => {
+    render(
+      <FileQueuePanel
+        files={[{ id: "f-b", name: "b.pdf", size: 1024, category: "office" }]}
+        onRemove={vi.fn()}
+        batchInputs={[
+          {
+            path: "01_a.pdf",
+            status: "failed",
+            error: "a failed",
+          },
+          {
+            path: "02_b.pdf",
+            status: "extracted",
+            error: null,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("extracted")).toBeInTheDocument();
+    expect(screen.queryByText("failed")).not.toBeInTheDocument();
+  });
+
   it("shows skipped warning icon immediately from input status even before skip_reason is loaded", () => {
     render(
       <FileQueuePanel

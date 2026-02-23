@@ -59,7 +59,9 @@ export function useUploadFlow({ client }) {
   }, []);
 
   const removeFile = useCallback((id) => {
-    dispatch({ type: "REMOVE_FILE", id });
+    const current = stateRef.current;
+    const target = current.files.find((entry) => entry.id === id);
+    dispatch({ type: "REMOVE_FILE", id, name: target?.name || "" });
   }, []);
 
   /**
@@ -338,7 +340,11 @@ export function useUploadFlow({ client }) {
     dispatch({ type: "REVIEW_ROWS_LOAD_START" });
     try {
       const payload = await client.getReviewRows(batchId);
-      const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.rows) ? payload.rows : [];
+      const rawRows = Array.isArray(payload) ? payload : Array.isArray(payload?.rows) ? payload.rows : [];
+      const fileNames = new Set(current.files.map((entry) => entry.name));
+      const rows = fileNames.size
+        ? rawRows.filter((row) => fileNames.has(normalizeQueueFilename(row?.filename)))
+        : rawRows;
       dispatch({ type: "REVIEW_ROWS_LOAD_SUCCESS", rows });
       return rows;
     } catch (error) {
@@ -568,4 +574,13 @@ async function recoverRecentBatch(client, current, submitStartedAt) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Normalize backend filename for queue matching.
+ * Backend may prefix index like "01_xxx.pdf".
+ * @param {unknown} value
+ */
+function normalizeQueueFilename(value) {
+  return String(value || "").replace(/^\d+_/, "").trim();
 }

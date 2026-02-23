@@ -209,31 +209,31 @@ function ItemStatusBadge({ status, t }) {
  * @param {Array<{ path: string; status?: string | null }>} batchInputs
  */
 function resolveInputStatus(entry, index, batchInputs) {
+  const byName = batchInputs.find((input) => normalizeQueueFilename(input.path) === entry.name);
+  if (byName) {
+    return byName.status || null;
+  }
   if (batchInputs[index]) {
     return batchInputs[index].status || null;
   }
-  const byName = batchInputs.find((input) => {
-    const tail = String(input.path || "").split("/").pop() || "";
-    return tail === entry.name;
-  });
-  return byName?.status || null;
+  return null;
 }
 
 /**
- * Match a local file entry to backend input error by index or filename.
+ * Match a local file entry to backend input error by filename first, then index fallback.
  * @param {{ name: string }} entry
  * @param {number} index
  * @param {Array<{ path: string; error?: unknown }>} batchInputs
  */
 function resolveInputError(entry, index, batchInputs) {
+  const byName = batchInputs.find((input) => normalizeQueueFilename(input.path) === entry.name);
+  if (byName) {
+    return byName.error || null;
+  }
   if (batchInputs[index]) {
     return batchInputs[index].error || null;
   }
-  const byName = batchInputs.find((input) => {
-    const tail = String(input.path || "").split("/").pop() || "";
-    return tail === entry.name;
-  });
-  return byName?.error || null;
+  return null;
 }
 
 /**
@@ -258,4 +258,15 @@ function formatBytes(value) {
     return `${kb.toFixed(1)} KB`;
   }
   return `${(kb / 1024).toFixed(2)} MB`;
+}
+
+/**
+ * Normalize backend input path to queue filename for stable matching.
+ * Handles windows separators and "01_" style indexed prefixes.
+ * @param {unknown} rawPath
+ */
+function normalizeQueueFilename(rawPath) {
+  const path = String(rawPath || "").replace(/\\/g, "/");
+  const tail = path.split("/").pop() || "";
+  return tail.replace(/^\d+_/, "").trim();
 }

@@ -36,6 +36,25 @@ describe("uploadFlowReducer", () => {
     expect(next.files).toHaveLength(1);
   });
 
+  it("removes matching review rows when queue file is removed", () => {
+    const state = {
+      ...initialUploadState,
+      phase: "review_ready",
+      files: [
+        { id: "f1", name: "a.pdf", size: 2, category: "bar", file: new File(["a"], "a.pdf", { type: "application/pdf" }) },
+      ],
+      reviewRows: [
+        { row_id: "bar:a.pdf:0", category: "bar", filename: "01_a.pdf", result: {}, score: {} },
+        { row_id: "bar:b.pdf:0", category: "bar", filename: "b.pdf", result: {}, score: {} },
+      ],
+    };
+
+    const next = uploadFlowReducer(state, { type: "REMOVE_FILE", id: "f1", name: "a.pdf" });
+    expect(next.files).toHaveLength(0);
+    expect(next.reviewRows).toHaveLength(1);
+    expect(next.reviewRows[0].filename).toBe("b.pdf");
+  });
+
   it("normalizes daily fallback category", () => {
     expect(normalizeCategoryForBatch("daily", "office")).toBe("bar");
   });

@@ -47,6 +47,7 @@ function buildBaseContext() {
       queueMergeOnly: vi.fn(async () => true),
       fetchReviewRows: vi.fn(async () => []),
       resolveMonthlyPathFromLocal: vi.fn(async () => "D:\\merge\\monthly.xlsx"),
+      removeFile: vi.fn(),
       retryMerge: vi.fn(async () => true),
       reportTypeError: vi.fn(async () => ({ status: "skipped", corrections: [] })),
     },
@@ -499,6 +500,32 @@ describe("ManualReviewPage", () => {
     });
 
     expect(screen.getByRole("link", { name: "View" })).toHaveAttribute("title", "Open in new tab");
+  });
+
+  it("syncs queue state when removing a review row", () => {
+    const removeFile = vi.fn();
+
+    renderPage({
+      actions: {
+        ...buildBaseContext().actions,
+        removeFile,
+      },
+      state: {
+        ...buildBaseContext().state,
+        reviewRows: [
+          {
+            row_id: "bar:invoice-2",
+            category: "bar",
+            filename: "a.pdf",
+            result: { store_name: "Store", brutto: "10.00", netto: "8.40", run_date: "10/02/2026" },
+            score: {},
+          },
+        ],
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(removeFile).toHaveBeenCalledWith("f1");
   });
 
   it("shows detailed localized preview-unavailable message", () => {

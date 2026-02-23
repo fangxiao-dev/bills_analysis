@@ -106,9 +106,14 @@ export function uploadFlowReducer(state, action) {
 
     case "REMOVE_FILE": {
       const files = state.files.filter((entry) => entry.id !== action.id);
+      const removedName = typeof action.name === "string" ? action.name.trim() : "";
+      const reviewRows = removedName
+        ? state.reviewRows.filter((row) => normalizeQueueFilename(row?.filename) !== removedName)
+        : state.reviewRows;
       return {
         ...state,
         files,
+        reviewRows,
         phase: files.length ? state.phase : "idle",
       };
     }
@@ -294,4 +299,13 @@ function formatRunDate(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = String(date.getFullYear());
   return `${day}/${month}/${year}`;
+}
+
+/**
+ * Normalize backend filename for queue matching.
+ * Backend may prefix index like "01_xxx.pdf".
+ * @param {unknown} value
+ */
+function normalizeQueueFilename(value) {
+  return String(value || "").replace(/^\d+_/, "").trim();
 }
