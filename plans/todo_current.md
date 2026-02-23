@@ -19,3 +19,4 @@
 | TC-104 | 1）upload阶段添加PDF页数超限⚠提醒+查看PDF；2）review阶段支持删除行（不影响JSON，仅影响最终输出） | DONE | 20260221-TC-104 | 2026-02-21T17:36:16+01:00 |  |
 | TC-105 | Web API主链路异步优化：预检查后并发执行识别+压缩，超页尽早跳过识别但保留归档，并在汇合阶段重命名 | DONE | 20260221-TC-105 | 2026-02-21T19:35:58+01:00 | Implemented async precheck+parallel fan-out/join with extract concurrency limits |
 | TC-106 | office receiver城市化：Upload选择城市，按配置自动匹配地址并参与receiver校验（地址只读、可扩展mapping） | DONE | 20260222-TC-106 | 2026-02-23T21:27:49+01:00 | manual test completed; receiver city mapping flow validated |
+| TC-107 | Web UI自动化测试基线：新增Playwright E2E覆盖upload→review→merge主链路，MCP仅用于探索式手工测试，不纳入CI门禁 | PLANNED | 20260223-TC-107 | 2026-02-23T21:18:21+01:00 | Phase-1: smoke可运行；非强制门禁 |
