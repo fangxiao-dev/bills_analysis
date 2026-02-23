@@ -171,4 +171,31 @@ describe("uploadClient.real", () => {
       expect.objectContaining({ method: "POST" }),
     );
   });
+
+  it("loads office receiver options from dedicated endpoint", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          schema_version: "v1",
+          default_city: "Dortmund",
+          options: [
+            {
+              city: "Dortmund",
+              receiver_name: "Ramen Ippin Dortmund GmbH",
+              receiver_address: "Reinoldistr.8 44135 Dortmund",
+            },
+          ],
+        }),
+    });
+    const client = createRealUploadClient({ baseUrl: "http://127.0.0.1:8000", fetchImpl });
+
+    const payload = await client.getOfficeReceiverOptions();
+    expect(payload.default_city).toBe("Dortmund");
+    expect(payload.options).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/batches/office-receiver-options",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
 });

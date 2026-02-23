@@ -438,4 +438,23 @@ describe("useUploadFlow", () => {
     expect(result.current.state.reviewRows).toHaveLength(1);
     expect(result.current.state.reviewRows[0].filename).toBe("01_keep.pdf");
   });
+  it("keeps options empty when office receiver options response is empty", async () => {
+    const client = createMockUploadClient({ latencyMs: 0 });
+    client.getOfficeReceiverOptions = vi.fn(async () => ({
+      default_city: "",
+      options: [],
+    }));
+
+    const { result } = renderHook(() => useUploadFlow({ client }));
+    act(() => {
+      result.current.actions.setBatchType("office");
+    });
+
+    await act(async () => {
+      await result.current.actions.fetchOfficeReceiverOptions();
+    });
+
+    expect(result.current.state.officeReceiverOptions).toHaveLength(0);
+    expect(result.current.state.officeReceiverCity).toBe("");
+  });
 });

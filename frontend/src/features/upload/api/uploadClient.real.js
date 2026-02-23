@@ -171,6 +171,19 @@ export function createRealUploadClient({ baseUrl, fetchImpl }) {
       });
       return parseReportErrorResponse(data);
     },
+
+    /**
+     * Fetch read-only office receiver city options for upload form.
+     */
+    async getOfficeReceiverOptions() {
+      const data = await requestJson({
+        baseUrl,
+        path: "/v1/batches/office-receiver-options",
+        method: "GET",
+        fetchImpl,
+      });
+      return parseOfficeReceiverOptionsPayload(data);
+    },
   };
 }
 
@@ -245,4 +258,28 @@ function parseLocalMergeSourcePayload(payload) {
     return { monthly_excel_path: payload.monthly_excel_path };
   }
   throw new Error("Invalid merge source response.");
+}
+
+/**
+ * Parse office receiver options response.
+ * @param {unknown} payload
+ */
+function parseOfficeReceiverOptionsPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Invalid office receiver options response.");
+  }
+  const optionsRaw = Array.isArray(payload.options) ? payload.options : [];
+  const options = optionsRaw
+    .map((item) => ({
+      city: typeof item?.city === "string" ? item.city.trim() : "",
+      receiver_name: typeof item?.receiver_name === "string" ? item.receiver_name.trim() : "",
+      receiver_address: typeof item?.receiver_address === "string" ? item.receiver_address.trim() : "",
+    }))
+    .filter((item) => item.city && item.receiver_name && item.receiver_address);
+  const defaultCityRaw = typeof payload.default_city === "string" ? payload.default_city.trim() : "";
+  const defaultCity = defaultCityRaw || options[0]?.city || "";
+  return {
+    default_city: defaultCity,
+    options,
+  };
 }

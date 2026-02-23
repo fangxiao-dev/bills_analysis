@@ -166,3 +166,19 @@ class MergeSourceLocalResponse(StrictModel):
     source_type: Literal["local_excel"] = "local_excel"
     monthly_excel_path: str
     created_at: datetime
+
+
+class OfficeReceiverOption(StrictModel):
+    """One office receiver city option exposed to upload UI."""
+
+    city: str
+    receiver_name: str
+    receiver_address: str
+
+
+class OfficeReceiverOptionsResponse(StrictModel):
+    """Read-only office receiver city options response envelope."""
+
+    schema_version: Literal["v1"] = SCHEMA_VERSION
+    default_city: str
+    options: list[OfficeReceiverOption] = Field(default_factory=list)
