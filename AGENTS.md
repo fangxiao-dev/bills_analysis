@@ -215,6 +215,14 @@ Lark 接入策略：
 - Skill 文件路径约定：`/.agents/skills/**/SKILL.md`。
 - 若 skill 缺失、未安装或路径不可读，需在回复中明确说明，并使用常规方案继续执行。
 
-### 8.2 Task Worktree Lifecycle Skill
-- 当任务包含完整 worktree 生命周期操作（创建 worktree、同步配置、环境初始化、回归前同步 `dev`、合并回 `dev`）时，使用 `task-worktree-lifecycle`。
-- 详细文档：`.agents/skills/task-worktree-lifecycle/SKILL.md`
+### 8.2 Task Worktree Lifecycle Skills
+
+Worktree 生命周期操作按执行环境拆分为两个 SKILL：
+
+- **`wt-plan`**（主干终端）：触发词 `确认task`、`写plan`、`创建wt` 等。
+  涵盖 task 定义对话、plan 三文件生成、commit 到主干、创建 worktree + sync config。
+  详细文档：`.agents/skills/wt-plan/SKILL.md`
+
+- **`wt-dev`**（wt 终端）：触发词 `开工`、`继续开发`、`start task` 等。
+  涵盖自动识别 task、恢复 plan 上下文、环境初始化、sync trunk、实现、人工测试暂停（必经门）、regression gate、更新计划证据、merge 回主干（`git -C`，无需切换终端）、标记 DONE、清理 worktree。
+  详细文档：`.agents/skills/wt-dev/SKILL.md`

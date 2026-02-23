@@ -40,7 +40,8 @@ data/samples/*
 !.agents/skills/
 .agents/skills/*
 !.agents/skills/cross-worktree-sync/
-!.agents/skills/task-worktree-lifecycle/
+!.agents/skills/wt-plan/
+!.agents/skills/wt-dev/
 !.agents/skills/
 !.agents/docs/
 .agents/docs/*
