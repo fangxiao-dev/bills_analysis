@@ -69,7 +69,7 @@ function buildBaseContext() {
       reportTypeError: vi.fn(async () => ({ status: "skipped", corrections: [] })),
     },
     state: {
-      files: [{ id: "f1", name: "a.pdf", category: "bar" }],
+      files: [{ id: "f1", name: "a.pdf", category: "bar", tax_id: "DE123" }],
       runDate: "10/02/2026",
       reviewRows: [],
       reviewRowsLoading: false,
@@ -368,7 +368,26 @@ describe("ManualReviewPage", () => {
       reportTypeError: vi.fn(async () => ({ status: "skipped", corrections: [] })),
     };
 
-    renderPage({ actions });
+    renderPage({
+      actions,
+      state: {
+        ...buildBaseContext().state,
+        reviewRows: [
+          {
+            row_id: "bar:invoice-1",
+            category: "bar",
+            filename: "invoice-1.pdf",
+            result: {
+              store_name: "Store A",
+              brutto: "10.00",
+              netto: "8.40",
+              tax_id: "DE123",
+            },
+            score: {},
+          },
+        ],
+      },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     await waitFor(() => {
@@ -381,7 +400,25 @@ describe("ManualReviewPage", () => {
   });
 
   it("shows repeat submit hint after submit succeeds", async () => {
-    renderPage();
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        reviewRows: [
+          {
+            row_id: "bar:invoice-1",
+            category: "bar",
+            filename: "invoice-1.pdf",
+            result: {
+              store_name: "Store A",
+              brutto: "10.00",
+              netto: "8.40",
+              tax_id: "DE123",
+            },
+            score: {},
+          },
+        ],
+      },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
     expect(await screen.findByText(/You can submit again to regenerate reviewed\.json/i)).toBeInTheDocument();
   });
@@ -389,6 +426,23 @@ describe("ManualReviewPage", () => {
   it("shows one combined done hint instead of two separate hints", async () => {
     renderPage({
       flags: { isBusy: false, isDone: true },
+      state: {
+        ...buildBaseContext().state,
+        reviewRows: [
+          {
+            row_id: "bar:invoice-1",
+            category: "bar",
+            filename: "invoice-1.pdf",
+            result: {
+              store_name: "Store A",
+              brutto: "10.00",
+              netto: "8.40",
+              tax_id: "DE123",
+            },
+            score: {},
+          },
+        ],
+      },
     });
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
     expect(await screen.findByText(/Review complete, merge succeeded/i)).toBeInTheDocument();
@@ -458,6 +512,7 @@ describe("ManualReviewPage", () => {
               store_name: "Store A",
               brutto: "10.00",
               netto: "8.40",
+              tax_id: "DE123",
               run_date: "01/02/2026",
             },
             score: {},
@@ -512,6 +567,7 @@ describe("ManualReviewPage", () => {
               store_name: "Store A",
               brutto: "10.00",
               netto: "8.40",
+              tax_id: "DE123",
               run_date: "01/02/2026",
             },
             score: {},

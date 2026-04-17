@@ -76,6 +76,8 @@
   "upload.dropzoneChoose": "Choose PDF Files",
   "review.title": "Manual Review",
   "review.subtitle": "Edit extracted fields by category, then submit results in one step.",
+  "review.batchInfo": "Batch info",
+  "review.batchId": "Batch ID",
   "review.currentBatch": "Current Batch",
   "review.rows": "Rows",
   "review.reviewRowsCount": "Review Rows Count",

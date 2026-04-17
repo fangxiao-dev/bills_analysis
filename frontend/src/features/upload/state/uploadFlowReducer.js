@@ -134,8 +134,8 @@ export function uploadFlowReducer(state, action) {
         phase: files.length ? state.phase : "idle",
       };
       if (state.batch) {
-        // Keep batch when files remain; full reset only if queue is emptied
-        return files.length ? nextState : invalidateBatchSnapshot(nextState, 0);
+        // Any queue mutation invalidates the batch snapshot because the batch was created for the previous file set.
+        return invalidateBatchSnapshot(nextState, files.length);
       }
       return nextState;
     }

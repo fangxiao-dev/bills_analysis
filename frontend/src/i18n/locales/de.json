@@ -76,6 +76,8 @@
   "upload.dropzoneChoose": "PDF-Dateien wählen",
   "review.title": "Manuelle Prüfung",
   "review.subtitle": "Extrahierte Felder je Kategorie bearbeiten und in einem Schritt absenden.",
+  "review.batchInfo": "Batch-Infos",
+  "review.batchId": "Batch-ID",
   "review.currentBatch": "Aktueller Batch",
   "review.rows": "Zeilen",
   "review.reviewRowsCount": "Anzahl Prüfzeilen",

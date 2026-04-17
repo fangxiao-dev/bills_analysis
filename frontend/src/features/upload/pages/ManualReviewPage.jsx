@@ -333,21 +333,6 @@ export function ManualReviewPage() {
         </div>
       </header>
 
-      <section className="kpi-strip section-enter">
-        <article className="kpi-card">
-          <p className="kpi-label">{t("review.currentBatch")}</p>
-          <p className="kpi-value">{state.batch?.batch_id || "--"}</p>
-        </article>
-        <article className="kpi-card">
-          <p className="kpi-label">{t("review.rows")}</p>
-          <p className="kpi-value">{totalRows}</p>
-        </article>
-        <article className="kpi-card">
-          <p className="kpi-label">{t("review.reviewRowsCount")}</p>
-          <p className="kpi-value">{state.batch?.review_rows_count ?? 0}</p>
-        </article>
-      </section>
-
       <section className="ledger-shell space-y-4">
         {!state.batch ? <AlertBanner tone="error" message={t("review.noBatch")} /> : null}
         {state.batch && flags.isBusy ? (
@@ -358,11 +343,17 @@ export function ManualReviewPage() {
         {isDailyBatch ? (
           <section className="ledger-card section-enter p-4">
             <header className="mb-3">
-              <h3 className="text-lg font-semibold">{t("upload.runDate")}</h3>
+              <h3 className="text-lg font-semibold">{t("review.batchInfo")}</h3>
               <p className="mt-1 text-sm text-ledger-smoke">{t("upload.runDateHint")}</p>
             </header>
-            <div className="max-w-sm">
-              <RunDatePicker value={state.runDate} onChange={actions.setRunDate} />
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(280px,320px)] md:items-end">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.batchId")}</p>
+                <p className="mt-2 break-all text-lg font-semibold text-ledger-ink">{state.batch?.batch_id || "--"}</p>
+              </div>
+              <div className="max-w-sm">
+                <RunDatePicker value={state.runDate} onChange={actions.setRunDate} />
+              </div>
             </div>
           </section>
         ) : null}

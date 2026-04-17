@@ -75,6 +75,8 @@
   "upload.dropzoneChoose": "选择 PDF 文件",
   "review.title": "人工审核",
   "review.subtitle": "按分类编辑提取结果，一次提交完成审核。",
+  "review.batchInfo": "任务信息",
+  "review.batchId": "Batch ID",
   "review.currentBatch": "当前任务",
   "review.rows": "行数",
   "review.reviewRowsCount": "审核行数",
