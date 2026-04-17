@@ -50,8 +50,8 @@ Local backend CLI skeleton for the invoice Azure API extraction PoC.
   `uv sync --extra web`
 - Start API (includes inline local worker by default):  
   `uv run invoice-web-api`
-- Dev CORS origins (default): `http://127.0.0.1:5173,http://localhost:5173`
-  - Override with env: `CORS_ALLOW_ORIGINS=http://127.0.0.1:5173,http://localhost:5173`
+- Dev CORS origins (default): `http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174`
+  - Override with env: `CORS_ALLOW_ORIGINS=http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174`
 - Health check:  
   `GET http://127.0.0.1:8000/healthz`
 - Create batch:  
@@ -120,6 +120,18 @@ Notes:
 - Queue/repository are in-memory implementations; replace them with Azure Queue + persistent store later without changing API/use-case signatures.
 - Legacy commands under `tests/*.py` are kept as thin wrappers; core business logic is migrated to `src/bills_analysis/services/` and `src/bills_analysis/integrations/`.
 
+## Local port convention
+- Self-use development: frontend `5173`, backend `8000`
+- Parallel test/dev instance: frontend `5174`, backend `8001`
+- Docker demo on host: `8002` -> container `8000`
+- One-click local launch:
+  - Self-use: `powershell -ExecutionPolicy Bypass -File .\scripts\dev_webapp.ps1 -Mode self`
+  - Test pair: `powershell -ExecutionPolicy Bypass -File .\scripts\dev_webapp.ps1 -Mode test`
+  - Inspect commands only: `powershell -ExecutionPolicy Bypass -File .\scripts\dev_webapp.ps1 -Mode test -DryRun`
+- Example test backend startup:
+  `PORT=8001 CORS_ALLOW_ORIGINS=http://127.0.0.1:5174,http://localhost:5174 uv run invoice-web-api`
+- Frontend examples live under `frontend/.env.self.example` and `frontend/.env.testlocal.example`
+
 ## Docker (M2 demo)
 - Prerequisite: Docker Desktop (or Docker Engine + Compose plugin).
 - Review environment variables in `.env.docker` before first run.
@@ -127,7 +139,7 @@ Notes:
   `docker compose up --build -d`
 - Check health:
   `docker compose ps`
-  `curl http://127.0.0.1:8000/healthz`
+  `curl http://127.0.0.1:8002/healthz`
 - View logs:
   `docker compose logs -f api`
 - Stop containers:
@@ -135,7 +147,7 @@ Notes:
 
 Docker notes:
 - The single service `api` builds backend + frontend static assets from `Dockerfile`.
-- API is exposed on `http://127.0.0.1:8000`.
+- API is exposed on `http://127.0.0.1:8002`.
 - Local `outputs/` is mounted into container path `/app/outputs` for persisted artifacts.
 
 ## Next steps (per PoC)
