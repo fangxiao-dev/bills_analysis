@@ -74,11 +74,18 @@ $excludedPatterns = @(
     '^_pkg'
 )
 
-# Critical files that must exist (for validation)
+# Critical files that must exist (for validation and recovery)
 $criticalFiles = @(
     'frontend/src/config/env.js'
+    'frontend/package.json'
+    'frontend/pnpm-lock.yaml'
+    'frontend/vite.config.js'
+    'frontend/postcss.config.js'
+    'frontend/tailwind.config.js'
+    'frontend/index.html'
     'src/bills_analysis/api/main.py'
     'src/bills_analysis/cli.py'
+    'tests/config.json'
 )
 
 # ===== HELPER FUNCTIONS =====
