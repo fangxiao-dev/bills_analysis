@@ -36,4 +36,19 @@ describe("AppFrame i18n controls", () => {
     expect(window.localStorage.getItem(LANGUAGE_KEY)).toBe("en");
     expect(screen.getByText("Upload Management")).toBeInTheDocument();
   });
+
+  it("does not show archive or settings navigation items", async () => {
+    await i18n.changeLanguage("de");
+
+    render(
+      <MemoryRouter>
+        <AppFrame>
+          <div>content</div>
+        </AppFrame>
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("Archiv")).not.toBeInTheDocument();
+    expect(screen.queryByText("Einstellungen")).not.toBeInTheDocument();
+  });
 });

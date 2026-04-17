@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { BillUploadPage } from "../features/upload/pages/BillUploadPage";
 import { ManualReviewPage } from "../features/upload/pages/ManualReviewPage";
-import { PlaceholderPage } from "./PlaceholderPage";
 
 /**
  * Top-level route map for the frontend shell.
@@ -11,8 +10,8 @@ export function AppRoutes() {
     <Routes>
       <Route path="/" element={<BillUploadPage />} />
       <Route path="/manual-review" element={<ManualReviewPage />} />
-      <Route path="/archive" element={<PlaceholderPage title="Archive" description="Archive workspace will be implemented in next milestone." />} />
-      <Route path="/settings" element={<PlaceholderPage title="Settings" description="Settings workspace will be implemented in next milestone." />} />
+      <Route path="/archive" element={<Navigate to="/" replace />} />
+      <Route path="/settings" element={<Navigate to="/" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
