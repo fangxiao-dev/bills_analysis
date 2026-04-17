@@ -44,6 +44,7 @@ export function ManualReviewPage() {
       { key: "store_name", label: t("review.columns.store_name") },
       { key: "brutto", label: t("review.columns.brutto") },
       { key: "netto", label: t("review.columns.netto") },
+      { key: "tax_id", label: t("review.columns.tax_id") },
       { key: "run_date", label: t("review.columns.run_date") },
     ],
     [t],
@@ -169,7 +170,7 @@ export function ManualReviewPage() {
     setLocalError("");
     setSubmitFeedback("");
 
-    if (effectiveBatchType === "office" && !showTaxIdWarn && hasInvalidTaxId(draft)) {
+    if (!showTaxIdWarn && hasInvalidTaxId(draft, effectiveBatchType)) {
       setShowTaxIdWarn(true);
       return;
     }
@@ -554,6 +555,7 @@ function buildDraftRowsFromFiles(files, runDate, previous) {
         store_name: current?.store_name ?? "-",
         brutto: current?.brutto ?? "-",
         netto: current?.netto ?? "-",
+        tax_id: current?.tax_id ?? "-",
         run_date: current?.run_date ?? runDate ?? "-",
         score: current?.score ?? {},
         raw_result: current?.raw_result ?? {},
@@ -647,6 +649,7 @@ function buildDraftRowsFromBackend(rows, runDate, previous) {
         store_name: current?.store_name ?? normalizeCellValue(result.store_name),
         brutto: current?.brutto ?? normalizeCellValue(result.brutto),
         netto: current?.netto ?? normalizeCellValue(result.netto),
+        tax_id: current?.tax_id ?? normalizeCellValue(result.tax_id),
         run_date: current?.run_date ?? normalizeCellValue(result.run_date, runDate || "-"),
       });
       return;
@@ -693,6 +696,7 @@ function composeReviewRows(draft) {
         baseResult.store_name = row.store_name;
         baseResult.brutto = row.brutto;
         baseResult.netto = row.netto;
+        baseResult.tax_id = row.tax_id;
         baseResult.run_date = row.run_date;
       } else if (category === "zbon") {
         baseResult.brutto = row.brutto;
@@ -742,11 +746,14 @@ function isValidHttpUrl(value) {
 }
 
 /**
- * Return true when any office draft row has a missing or placeholder tax_id.
- * @param {{ office: Array<{ tax_id?: string }> }} draft
+ * Return true when the relevant rows for the given batch type have an invalid/missing tax_id.
+ * For office: checks office rows. For daily: checks invoice-type bar rows (receipt rows carry "Beleg").
+ * @param {{ bar: Array<{ tax_id?: string }>; office: Array<{ tax_id?: string }> }} draft
+ * @param {string} batchType
  */
-function hasInvalidTaxId(draft) {
-  return (draft?.office ?? []).some((row) => {
+function hasInvalidTaxId(draft, batchType) {
+  const rows = batchType === "office" ? (draft?.office ?? []) : (draft?.bar ?? []);
+  return rows.some((row) => {
     const v = (row.tax_id ?? "").trim();
     return !v || v === "-";
   });

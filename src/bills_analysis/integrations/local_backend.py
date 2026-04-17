@@ -169,20 +169,32 @@ def _to_excel_hyperlink(value: Any) -> str | None:
         return str(path)
 
 
-def _safe_pdf_page_count(pdf_path: Path) -> int | None:
-    """Read page count defensively and skip tiny placeholder files used in tests."""
+_RECEIPT_RATIO_THRESHOLD = 2.0
+
+
+def _safe_pdf_page_info(pdf_path: Path) -> tuple[int | None, float | None]:
+    """Read page count and first-page height/width ratio defensively."""
 
     try:
         # Avoid PyMuPDF native crashes on malformed tiny placeholder PDFs.
         if pdf_path.stat().st_size < 1024:
-            return None
+            return None, None
     except Exception:
-        return None
+        return None, None
     try:
         with fitz.open(pdf_path) as doc:
-            return int(doc.page_count)
+            count = int(doc.page_count)
+            if count < 1:
+                return count, None
+            page = doc.load_page(0)
+            rect = page.rect
+            width, height = rect.width, rect.height
+            if page.rotation in (90, 270):
+                width, height = height, width
+            ratio = height / width if width > 0 else None
+            return count, ratio
     except Exception:
-        return None
+        return None, None
 
 
 def _read_int_env(name: str, default: int, *, minimum: int | None = None) -> int:
@@ -486,7 +498,7 @@ class LocalPipelineBackend:
             row["error"] = f"missing input file: {source_path}"
             return row
 
-        page_count = await asyncio.to_thread(_safe_pdf_page_count, source_path)
+        page_count, page_ratio = await asyncio.to_thread(_safe_pdf_page_info, source_path)
         should_extract = True
         force_skip_compress_for_over_pages = False
         if page_count is not None and page_count > max_pages:
@@ -507,7 +519,15 @@ class LocalPipelineBackend:
         if markers:
             row["markers"] = markers
 
-        model_id = "prebuilt-invoice" if category == "office" else "prebuilt-receipt"
+        if category == "office":
+            model_id = "prebuilt-invoice"
+            file_type = "invoice"
+        elif page_count == 1 and page_ratio is not None and page_ratio > _RECEIPT_RATIO_THRESHOLD:
+            model_id = "prebuilt-receipt"
+            file_type = "receipt"
+        else:
+            model_id = "prebuilt-invoice"
+            file_type = "invoice"
         if should_compress:
             compress_task = asyncio.create_task(
                 asyncio.to_thread(
@@ -573,7 +593,7 @@ class LocalPipelineBackend:
                         batch_out_dir=archive_root.parent,
                     )
                 else:
-                    self._fill_daily_row(row, extract_output)
+                    self._fill_daily_row(row, extract_output, file_type=file_type)
             except Exception as exc:
                 row["extract_error"] = str(exc)
 
@@ -593,8 +613,8 @@ class LocalPipelineBackend:
 
         return row
 
-    def _fill_daily_row(self, row: dict[str, Any], azure_result: dict[str, Any]) -> None:
-        """Map Azure receipt fields into daily review row contract."""
+    def _fill_daily_row(self, row: dict[str, Any], azure_result: dict[str, Any], *, file_type: str) -> None:
+        """Map Azure DI fields into daily review row contract; file_type drives tax_id extraction."""
 
         store_name = azure_result.get("store_name")
         if isinstance(store_name, str) and store_name.strip():
@@ -602,10 +622,16 @@ class LocalPipelineBackend:
         row["result"]["brutto"] = azure_result.get("brutto")
         row["result"]["netto"] = azure_result.get("netto")
         row["result"]["total_tax"] = azure_result.get("total_tax")
+        row["result"]["file_type"] = file_type
         row["score"]["store_name"] = azure_result.get("confidence_store_name")
         row["score"]["brutto"] = azure_result.get("confidence_brutto")
         row["score"]["netto"] = azure_result.get("confidence_netto")
         row["score"]["total_tax"] = azure_result.get("confidence_total_tax")
+        if file_type == "receipt":
+            row["result"]["tax_id"] = "Beleg"
+        else:
+            row["result"]["tax_id"] = azure_result.get("invoice_id")
+            row["score"]["tax_id"] = azure_result.get("confidence_invoice_id")
 
     def _fill_office_row(
         self,

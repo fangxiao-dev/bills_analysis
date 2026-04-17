@@ -87,16 +87,17 @@ def get_compressed_pdf_name(category: str, extracted_kv: dict[str, Any], run_dat
     if cat == "bar":
         store_name = extracted_kv.get("store_name") or ""
         brutto = extracted_kv.get("brutto") or ""
-        brutto_norm = str(brutto).strip().replace(",", ".")
-        int_part, frac_part = brutto_norm, "00"
-        if "." in brutto_norm:
-            int_part, frac_part = brutto_norm.split(".", 1)
-        int_part = "".join(ch for ch in int_part if ch.isdigit()) or "0"
-        frac_part = "".join(ch for ch in frac_part if ch.isdigit()) or "00"
+        brutto_norm = str(brutto).strip().replace(".", ",")
         safe_store = store_name.strip().replace("/", " ").replace("\\", " ").strip()
-        if safe_store:
-            return f"{safe_store} {int_part}_{frac_part}.pdf"
-        return None
+        if not safe_store or not brutto_norm:
+            return None
+        file_type = str(extracted_kv.get("file_type") or "receipt").strip().lower()
+        if file_type == "receipt":
+            tax_id_str = "Beleg"
+        else:
+            tax_id_raw = extracted_kv.get("tax_id")
+            tax_id_str = str(tax_id_raw).strip() if _is_valid_rechnungnr(tax_id_raw) else "NA"
+        return f"{safe_store}_{brutto_norm}_{tax_id_str}.pdf"
     return None
 
 
@@ -249,6 +250,8 @@ class AzurePipelineAdapter:
             score_kv = {llm_field: None for llm_field in prompts_dict[purpose]["fields"]}
             score_kv.pop("run_date", None)
             extracted_kv["run_date"] = run_date
+            extracted_kv["file_type"] = file_type
+            extracted_kv["tax_id"] = "Beleg" if file_type == "receipt" else None
         result_entry = {
             "filename": pdf_path.name,
             "result": extracted_kv,
@@ -339,6 +342,9 @@ class AzurePipelineAdapter:
                 score_kv["netto"] = azure_result.get("confidence_netto")
                 score_kv["store_name"] = azure_result.get("confidence_store_name")
                 score_kv["total_tax"] = azure_result.get("confidence_total_tax")
+                if file_type == "invoice":
+                    extracted_kv["tax_id"] = azure_result.get("invoice_id")
+                    score_kv["tax_id"] = azure_result.get("confidence_invoice_id")
 
         archive_dir = backup_dest_dir / get_archive_subdir_name(run_date, category)
         final_pdf = None

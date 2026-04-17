@@ -49,12 +49,38 @@ def test_compressed_pdf_name_parity() -> None:
     zbon_name = get_compressed_pdf_name("zbon", {}, "04/02/2026")
     assert zbon_name == "04_02_2026 do.pdf"
 
-    bar_name = get_compressed_pdf_name(
+    # bar receipt → comma decimal + Beleg suffix
+    bar_receipt = get_compressed_pdf_name(
         "bar",
-        {"store_name": "REWE", "brutto": "10,20"},
+        {"store_name": "REWE", "brutto": "10.20", "file_type": "receipt"},
         "04/02/2026",
     )
-    assert bar_name == "REWE 10_20.pdf"
+    assert bar_receipt == "REWE_10,20_Beleg.pdf"
+
+    # bar invoice + valid tax_id
+    bar_invoice = get_compressed_pdf_name(
+        "bar",
+        {"store_name": "REWE", "brutto": "10.20", "file_type": "invoice", "tax_id": "INV-007"},
+        "04/02/2026",
+    )
+    assert bar_invoice == "REWE_10,20_INV-007.pdf"
+
+    # bar invoice + invalid tax_id → NA
+    for bad in ("", "-", None):
+        name = get_compressed_pdf_name(
+            "bar",
+            {"store_name": "REWE", "brutto": "10.20", "file_type": "invoice", "tax_id": bad},
+            "04/02/2026",
+        )
+        assert name == "REWE_10,20_NA.pdf", f"expected NA for bar invoice tax_id={bad!r}"
+
+    # bar with missing file_type defaults to receipt behaviour (Beleg)
+    bar_default = get_compressed_pdf_name(
+        "bar",
+        {"store_name": "REWE", "brutto": "10.20"},
+        "04/02/2026",
+    )
+    assert bar_default == "REWE_10,20_Beleg.pdf"
 
 
 def test_pipeline_adapter_result_append_parity(monkeypatch) -> None:
