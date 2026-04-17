@@ -122,7 +122,7 @@ API schema 作为前后端（或模块间）的集成边界。Contract 一旦冻
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Environment 1: Trunk (dev/main) — 规划          [SKILL: wt-plan]│
+│ Environment 1: Trunk (main/release) — 规划      [SKILL: wt-plan]│
 │                                                                  │
 │  task 定义对话 → 更新 todo_current → quick-plan 三文件          │
 │  → commit 规划产出物到 trunk → git worktree add → sync config   │
@@ -168,7 +168,7 @@ API schema 作为前后端（或模块间）的集成边界。Contract 一旦冻
 | 3. Commit Plan to Trunk | Trunk | `wt-plan` | Executor | `git commit` 规划产出物（`todo_current.md` + 三 plan 文件）到 trunk，形成独立审计节点 |
 | 4. Worktree Setup | Trunk | `wt-plan` | Executor | 新建：`git worktree add -b feat/<id>-<slug>`；续做：跳过 add；两种情况都执行 `sync_worktree_config` |
 | 5. Environment Init | Worktree | `wt-dev` | Executor | `uv sync` + link-first runtime reuse；只有在依赖需变更或共享依赖不可用时才执行本地 `pnpm install`；首次运行时做最小可运行检查 |
-| 6. Sync Trunk + Regression | Worktree | `wt-dev` | Executor | `git merge dev`，解决冲突；`pytest` + `pnpm test` |
+| 6. Sync Trunk + Regression | Worktree | `wt-dev` | Executor | `git merge main`，解决冲突；`pytest` + `pnpm test` |
 | 7. Implementation | Worktree | `wt-dev` | Executor | 编码、单元测试、迭代；每子步骤后更新 `progress.md` |
 | 8. [PAUSE] Manual Testing | Worktree | `wt-dev` | Human | SKILL 输出测试清单后等待；人工确认通过后继续 |
 | 9. Final Regression + Plan Evidence | Worktree | `wt-dev` | Executor | 全量回归；更新 `progress/findings`，保持任务为 `PLANNED` |
