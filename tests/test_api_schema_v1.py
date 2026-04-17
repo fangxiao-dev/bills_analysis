@@ -209,6 +209,19 @@ def test_cors_preflight_options_for_create_batch() -> None:
         assert "POST" in (res.headers.get("access-control-allow-methods") or "")
 
 
+def test_cors_uses_env_allow_origins_for_parallel_frontend_ports(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Configured CORS origins should allow a second local frontend port for parallel runs."""
+
+    monkeypatch.setenv(
+        "CORS_ALLOW_ORIGINS",
+        "http://127.0.0.1:5173,http://127.0.0.1:5174",
+    )
+    from bills_analysis.api.main import _load_cors_allow_origins
+
+    origins = _load_cors_allow_origins()
+    assert origins == ["http://127.0.0.1:5173", "http://127.0.0.1:5174"]
+
+
 def _make_excel_bytes() -> bytes:
     """Build in-memory workbook bytes for multipart Excel upload tests."""
 

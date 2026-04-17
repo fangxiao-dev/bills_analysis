@@ -16,6 +16,8 @@ M1 frontend for bills upload workflow. This app follows frozen `v1` backend cont
    - `pnpm install`
 3. Run dev server:
    - `pnpm dev`
+   - Self-use fixed ports: `pnpm dev:self`
+   - Parallel test fixed ports: `pnpm dev:test`
 4. Run tests:
    - `pnpm test`
 5. Run real API smoke (requires backend running on `VITE_API_BASE_URL`):
@@ -26,8 +28,17 @@ Copy `.env.example` as `.env.local` and adjust when needed:
 
 - `VITE_API_MODE=mock|real`
 - `VITE_API_BASE_URL=http://127.0.0.1:8000`
+- `VITE_DEV_PORT=5173`
 
 Default mode is `mock`.
+
+Recommended local pairs:
+- Self-use: frontend `5173`, backend `8000`
+- Parallel test: frontend `5174`, backend `8001`
+
+Example env templates:
+- `.env.self.example`
+- `.env.testlocal.example`
 
 Smoke command env overrides:
 - `VITE_API_BASE_URL` or `API_BASE_URL` (default `http://127.0.0.1:8000`)
