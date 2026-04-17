@@ -83,6 +83,7 @@ export function ManualReviewPage() {
   const [reportingError, setReportingError] = useState(false);
   const [reportFeedback, setReportFeedback] = useState("");
   const [submitFeedback, setSubmitFeedback] = useState("");
+  const [showTaxIdWarn, setShowTaxIdWarn] = useState(false);
   const [reportTypeErrorArmed, setReportTypeErrorArmed] = useState(false);
   const previewUrlCacheRef = useRef(new Map());
   const reportFeedbackTimerRef = useRef(null);
@@ -167,6 +168,12 @@ export function ManualReviewPage() {
   const onSubmit = useCallback(async () => {
     setLocalError("");
     setSubmitFeedback("");
+
+    if (effectiveBatchType === "office" && !showTaxIdWarn && hasInvalidTaxId(draft)) {
+      setShowTaxIdWarn(true);
+      return;
+    }
+    setShowTaxIdWarn(false);
 
     if (monthlyPathSource === SOURCE_LARK_SHEET && !isValidHttpUrl(larkSheetLink)) {
       setLocalError(t("review.invalidLarkUrl"));
@@ -469,6 +476,18 @@ export function ManualReviewPage() {
             </div>
           ) : null}
 
+          {showTaxIdWarn ? (
+            <div className="my-2 flex flex-wrap items-center gap-2 rounded border border-yellow-400 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
+              <span className="flex-1">{t("review.taxIdMissingWarning")}</span>
+              <Button type="button" variant="secondary" onClick={() => setShowTaxIdWarn(false)}>
+                {t("common.cancel")}
+              </Button>
+              <Button type="button" variant="primary" onClick={() => void onSubmit()} data-testid="submit-taxid-warn-continue">
+                {t("common.continueAnyway")}
+              </Button>
+            </div>
+          ) : null}
+
           <div className="mt-3 flex flex-wrap gap-2">
             <Button type="button" variant="primary" onClick={() => void onSubmit()} disabled={submitDisabled} data-testid="submit-review-button">
               {t("common.submit")}
@@ -720,6 +739,17 @@ function isValidHttpUrl(value) {
   } catch {
     return false;
   }
+}
+
+/**
+ * Return true when any office draft row has a missing or placeholder tax_id.
+ * @param {{ office: Array<{ tax_id?: string }> }} draft
+ */
+function hasInvalidTaxId(draft) {
+  return (draft?.office ?? []).some((row) => {
+    const v = (row.tax_id ?? "").trim();
+    return !v || v === "-";
+  });
 }
 
 /**

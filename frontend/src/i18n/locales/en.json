@@ -15,6 +15,8 @@
   "common.remove": "Remove",
   "common.today": "Today",
   "common.close": "Close",
+  "common.cancel": "Cancel",
+  "common.continueAnyway": "Continue anyway",
   "status.queued": "queued",
   "status.running": "running",
   "status.review_ready": "review_ready",
@@ -135,6 +137,7 @@
   "review.columns.sender": "Sender",
   "review.columns.tax_id": "Tax ID",
   "review.columns.receiver_ok": "Receiver OK",
-  "review.columns.receiver_address_ok": "Address OK"
+  "review.columns.receiver_address_ok": "Address OK",
+  "review.taxIdMissingWarning": "Some office rows have no valid invoice number (empty or \"-\"). Submit anyway?"
 }
 

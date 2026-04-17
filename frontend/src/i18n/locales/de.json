@@ -15,6 +15,8 @@
   "common.remove": "Entfernen",
   "common.today": "Heute",
   "common.close": "Schließen",
+  "common.cancel": "Abbrechen",
+  "common.continueAnyway": "Trotzdem fortfahren",
   "status.queued": "wartend",
   "status.running": "laufend",
   "status.review_ready": "zur Prüfung bereit",
@@ -135,6 +137,7 @@
   "review.columns.sender": "Absender",
   "review.columns.tax_id": "Steuer-ID",
   "review.columns.receiver_ok": "Empfänger OK",
-  "review.columns.receiver_address_ok": "Adresse OK"
+  "review.columns.receiver_address_ok": "Adresse OK",
+  "review.taxIdMissingWarning": "Einige Office-Zeilen haben keine gültige Rechnungsnr. (leer oder \"-\"). Trotzdem absenden?"
 }
 

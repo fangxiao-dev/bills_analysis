@@ -15,8 +15,8 @@ def test_archive_subdir_name_parity() -> None:
     """Archive subdir naming should keep legacy date/category conventions."""
 
     assert get_archive_subdir_name("04/02/2026", "office") == "2602DO Qonto Zahlungsausgang"
-    assert get_archive_subdir_name("04/02/2026", "zbon") == "2602DO Bar Ausgabe"
-    assert get_archive_subdir_name("04/02/2026", "bar") == "2602DO Z-Bon"
+    assert get_archive_subdir_name("04/02/2026", "zbon") == "2602DO Z-Bon"
+    assert get_archive_subdir_name("04/02/2026", "bar") == "2602DO Bar Ausgabe"
 
 
 def test_compressed_pdf_name_parity() -> None:
@@ -24,10 +24,27 @@ def test_compressed_pdf_name_parity() -> None:
 
     office_name = get_compressed_pdf_name(
         "office",
+        {"sender": "Metro AG", "brutto": "195.56", "tax_id": "DE123"},
+        "04/02/2026",
+    )
+    assert office_name == "2602Do_Metro_195,56_DE123.pdf"
+
+    # tax_id missing → NA placeholder
+    office_name_no_taxid = get_compressed_pdf_name(
+        "office",
         {"sender": "Metro AG", "brutto": "195.56"},
         "04/02/2026",
     )
-    assert office_name == "2602Do_Metro_195,56.pdf"
+    assert office_name_no_taxid == "2602Do_Metro_195,56_NA.pdf"
+
+    # tax_id invalid values → NA placeholder
+    for bad in ("", "-", None):
+        name = get_compressed_pdf_name(
+            "office",
+            {"sender": "Metro AG", "brutto": "195.56", "tax_id": bad},
+            "04/02/2026",
+        )
+        assert name == "2602Do_Metro_195,56_NA.pdf", f"expected NA for tax_id={bad!r}"
 
     zbon_name = get_compressed_pdf_name("zbon", {}, "04/02/2026")
     assert zbon_name == "04_02_2026 do.pdf"

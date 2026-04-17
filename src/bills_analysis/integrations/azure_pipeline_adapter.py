@@ -43,10 +43,19 @@ def get_archive_subdir_name(run_date: str, category: str) -> str:
     if cat == "office":
         return f"{yymm}DO Qonto Zahlungsausgang"
     if cat == "zbon":
-        return f"{yymm}DO Bar Ausgabe"
-    if cat == "bar":
         return f"{yymm}DO Z-Bon"
+    if cat == "bar":
+        return f"{yymm}DO Bar Ausgabe"
     return f"{yymm}DO {category}"
+
+
+def _is_valid_rechnungnr(val: Any) -> bool:
+    """Return True when val is a non-empty, non-placeholder Rechnungnr. string."""
+
+    if val is None:
+        return False
+    s = str(val).strip()
+    return bool(s) and s != "-"
 
 
 def get_compressed_pdf_name(category: str, extracted_kv: dict[str, Any], run_date: str) -> str | None:
@@ -63,8 +72,10 @@ def get_compressed_pdf_name(category: str, extracted_kv: dict[str, Any], run_dat
         sender_first = str(sender).strip().split(" ")[0] if sender else ""
         brutto = extracted_kv.get("brutto") or ""
         brutto_norm = str(brutto).strip().replace(".", ",")
+        tax_id_raw = extracted_kv.get("tax_id")
+        rechnungnr = str(tax_id_raw).strip() if _is_valid_rechnungnr(tax_id_raw) else "NA"
         if sender_first and brutto_norm:
-            return f"{yymm}Do_{sender_first}_{brutto_norm}.pdf"
+            return f"{yymm}Do_{sender_first}_{brutto_norm}_{rechnungnr}.pdf"
         return None
     if cat == "zbon":
         try:
