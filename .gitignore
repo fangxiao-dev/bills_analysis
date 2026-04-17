@@ -9,6 +9,7 @@ src/bills_analysis.egg-info/
 .venv/
 env/
 venv/
+_pkg/
 
 # Editor/OS
 .DS_Store
@@ -29,6 +30,7 @@ data/**
 outputs/*
 dataset/*
 data/samples/*
+_pkg/
 
 # SKILLS
 # AI assistant configurations (symbolic links, not real content)
@@ -40,8 +42,6 @@ data/samples/*
 !.agents/skills/
 .agents/skills/*
 !.agents/skills/cross-worktree-sync/
-!.agents/skills/wt-plan/
-!.agents/skills/wt-dev/
 !.agents/skills/
 !.agents/docs/
 .agents/docs/*
