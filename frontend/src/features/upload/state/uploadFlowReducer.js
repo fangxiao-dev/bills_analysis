@@ -111,13 +111,14 @@ export function uploadFlowReducer(state, action) {
 
     case "ADD_FILES": {
       const nextFiles = [...state.files, ...action.entries];
-      return {
+      const nextState = {
         ...state,
         files: nextFiles,
         rejectedMessage: action.rejectedMessage || "",
         formError: "",
         phase: nextFiles.length ? "ready" : state.phase,
       };
+      return state.batch ? invalidateBatchSnapshot(nextState, nextFiles.length) : nextState;
     }
 
     case "REMOVE_FILE": {
@@ -126,12 +127,13 @@ export function uploadFlowReducer(state, action) {
       const reviewRows = removedName
         ? state.reviewRows.filter((row) => normalizeQueueFilename(row?.filename) !== removedName)
         : state.reviewRows;
-      return {
+      const nextState = {
         ...state,
         files,
         reviewRows,
         phase: files.length ? state.phase : "idle",
       };
+      return state.batch ? invalidateBatchSnapshot(nextState, files.length) : nextState;
     }
 
     case "SET_FORM_ERROR":
@@ -344,6 +346,28 @@ function formatRunDate(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = String(date.getFullYear());
   return `${day}/${month}/${year}`;
+}
+
+/**
+ * Invalidate batch-derived state after the local queue changes.
+ * A created batch is a snapshot of the previous file set and must be recreated.
+ * @param {typeof initialUploadState} state
+ * @param {number} fileCount
+ */
+function invalidateBatchSnapshot(state, fileCount) {
+  return {
+    ...state,
+    phase: fileCount ? "ready" : "idle",
+    reviewRows: [],
+    reviewRowsLoading: false,
+    batch: null,
+    mergeTask: null,
+    reviewSubmitted: false,
+    reportTypeErrorConsumed: false,
+    mergeRequested: false,
+    lastMergeTaskId: null,
+    systemError: "",
+  };
 }
 
 /**
