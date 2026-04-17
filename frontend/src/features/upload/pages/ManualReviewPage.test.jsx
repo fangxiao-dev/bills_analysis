@@ -23,9 +23,26 @@ const mockContext = useUploadFlowContext;
  * @param {Partial<ReturnType<typeof buildBaseContext>>} overrides
  */
 function renderPage(overrides = {}) {
+  const base = buildBaseContext();
   mockContext.mockReturnValue({
-    ...buildBaseContext(),
+    ...base,
     ...overrides,
+    client: {
+      ...base.client,
+      ...(overrides.client || {}),
+    },
+    flags: {
+      ...base.flags,
+      ...(overrides.flags || {}),
+    },
+    actions: {
+      ...base.actions,
+      ...(overrides.actions || {}),
+    },
+    state: {
+      ...base.state,
+      ...(overrides.state || {}),
+    },
   });
 
   return render(
@@ -426,6 +443,110 @@ describe("ManualReviewPage", () => {
 
     expect(bruttoInput.className).toContain("review-cell-low-confidence");
     expect(nettoInput.className).not.toContain("review-cell-low-confidence");
+  });
+
+  it("renders one shared daily run date control and removes row-level date inputs", () => {
+    renderPage({
+      state: {
+        ...buildBaseContext().state,
+        reviewRows: [
+          {
+            row_id: "bar:invoice-1",
+            category: "bar",
+            filename: "invoice-1.pdf",
+            result: {
+              store_name: "Store A",
+              brutto: "10.00",
+              netto: "8.40",
+              run_date: "01/02/2026",
+            },
+            score: {},
+          },
+          {
+            row_id: "zbon:invoice-2",
+            category: "zbon",
+            filename: "zbon-2.pdf",
+            result: {
+              brutto: "20.00",
+              netto: "16.00",
+              run_date: "02/02/2026",
+            },
+            score: {},
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByDisplayValue("2026-02-10")).toBeInTheDocument();
+    expect(screen.queryByLabelText("BAR Review Items-run_date-bar:invoice-1")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("ZBON Review Items-run_date-zbon:invoice-2")).not.toBeInTheDocument();
+  });
+
+  it("submits daily rows with the shared review page run date", async () => {
+    const base = buildBaseContext();
+    const actions = {
+      ...base.actions,
+      submitReviewOnly: vi.fn(async () => true),
+      queueMergeOnly: vi.fn(async () => true),
+      fetchReviewRows: vi.fn(async () => []),
+      resolveMonthlyPathFromLocal: vi.fn(async () => "D:\\merge\\monthly.xlsx"),
+      retryMerge: vi.fn(async () => true),
+      reportTypeError: vi.fn(async () => ({ status: "skipped", corrections: [] })),
+    };
+
+    const context = {
+      ...base,
+      actions: {
+        ...actions,
+        setRunDate: vi.fn(),
+      },
+      state: {
+        ...base.state,
+        runDate: "14/02/2026",
+        reviewRows: [
+          {
+            row_id: "bar:invoice-1",
+            category: "bar",
+            filename: "invoice-1.pdf",
+            result: {
+              store_name: "Store A",
+              brutto: "10.00",
+              netto: "8.40",
+              run_date: "01/02/2026",
+            },
+            score: {},
+          },
+          {
+            row_id: "zbon:invoice-2",
+            category: "zbon",
+            filename: "zbon-2.pdf",
+            result: {
+              brutto: "20.00",
+              netto: "16.00",
+              run_date: "02/02/2026",
+            },
+            score: {},
+          },
+        ],
+      },
+    };
+
+    mockContext.mockImplementation(() => context);
+    render(
+      <MemoryRouter>
+        <ManualReviewPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => {
+      expect(actions.submitReviewOnly).toHaveBeenCalled();
+    });
+
+    const submittedRows = actions.submitReviewOnly.mock.calls[0][0];
+    expect(submittedRows).toHaveLength(2);
+    expect(submittedRows[0].result.run_date).toBe("14/02/2026");
+    expect(submittedRows[1].result.run_date).toBe("14/02/2026");
   });
 
   it("renders office type/receiver_ok selectors and submits updated boolean payload", async () => {

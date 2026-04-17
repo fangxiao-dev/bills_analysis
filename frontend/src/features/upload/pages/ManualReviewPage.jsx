@@ -4,6 +4,7 @@ import { AppFrame } from "../../../app/AppFrame";
 import { API_BASE_URL } from "../../../config/env";
 import { AlertBanner } from "../../../shared/ui/AlertBanner";
 import { Button } from "../../../shared/ui/Button";
+import { RunDatePicker } from "../components/RunDatePicker";
 import { StatusBadge } from "../components/StatusBadge";
 import { ReviewCategoryTable } from "../components/ReviewCategoryTable";
 import { useUploadFlowContext } from "../state/UploadFlowContext";
@@ -37,6 +38,7 @@ export function ManualReviewPage() {
   const { t } = useTranslation();
   const { client, state, actions, flags } = useUploadFlowContext();
   const effectiveBatchType = state.batch?.type || state.batchType || "daily";
+  const isDailyBatch = effectiveBatchType === "daily";
 
   const barColumns = useMemo(
     () => [
@@ -45,7 +47,6 @@ export function ManualReviewPage() {
       { key: "brutto", label: t("review.columns.brutto") },
       { key: "netto", label: t("review.columns.netto") },
       { key: "tax_id", label: t("review.columns.tax_id") },
-      { key: "run_date", label: t("review.columns.run_date") },
     ],
     [t],
   );
@@ -55,7 +56,6 @@ export function ManualReviewPage() {
       { key: "filename", label: t("review.table.file"), readOnly: true },
       { key: "brutto", label: t("review.columns.brutto") },
       { key: "netto", label: t("review.columns.netto") },
-      { key: "run_date", label: t("review.columns.run_date") },
     ],
     [t],
   );
@@ -73,7 +73,7 @@ export function ManualReviewPage() {
     [t],
   );
 
-  const [draft, setDraft] = useState(() => buildDraftRowsFromFiles(state.files, state.runDate, null));
+  const [draft, setDraft] = useState(() => buildDraftRowsFromFiles(state.files, null));
   const [localError, setLocalError] = useState("");
   const [monthlyPathSource, setMonthlyPathSource] = useState(SOURCE_LOCAL_FILE);
   const [selectedLocalFileName, setSelectedLocalFileName] = useState(null);
@@ -93,11 +93,11 @@ export function ManualReviewPage() {
   useEffect(() => {
     setDraft((previous) => {
       if (state.reviewRows.length) {
-        return buildDraftRowsFromBackend(state.reviewRows, state.runDate, previous);
+        return buildDraftRowsFromBackend(state.reviewRows, previous);
       }
-      return buildDraftRowsFromFiles(state.files, state.runDate, previous);
+      return buildDraftRowsFromFiles(state.files, previous);
     });
-  }, [state.files, state.reviewRows, state.runDate]);
+  }, [state.files, state.reviewRows]);
 
   useEffect(() => {
     const nextMode = effectiveBatchType === "daily" ? "overwrite" : state.mergeRequestPayload?.mode || "overwrite";
@@ -181,7 +181,7 @@ export function ManualReviewPage() {
       return;
     }
 
-    const rows = composeReviewRows(draft);
+    const rows = composeReviewRows(draft, state.runDate);
     if (!rows.length) {
       setLocalError(t("review.noRows"));
       return;
@@ -354,6 +354,18 @@ export function ManualReviewPage() {
           <AlertBanner message={t("review.submitBlockedWhileProcessing", { status: state.batch.status })} />
         ) : null}
         {state.reviewRowsLoading ? <AlertBanner message={t("review.loadingRows")} /> : null}
+
+        {isDailyBatch ? (
+          <section className="ledger-card section-enter p-4">
+            <header className="mb-3">
+              <h3 className="text-lg font-semibold">{t("upload.runDate")}</h3>
+              <p className="mt-1 text-sm text-ledger-smoke">{t("upload.runDateHint")}</p>
+            </header>
+            <div className="max-w-sm">
+              <RunDatePicker value={state.runDate} onChange={actions.setRunDate} />
+            </div>
+          </section>
+        ) : null}
 
         <ReviewCategoryTable
           title={t("review.section.barTitle")}
@@ -529,10 +541,10 @@ export function ManualReviewPage() {
 /**
  * Build editable rows for each category while preserving existing edits.
  * @param {Array<{ id: string; name: string; category: "bar" | "zbon" | "office" | null }>} files
- * @param {string} runDate
  * @param {{ bar: Array<Record<string, string>>; zbon: Array<Record<string, string>>; office: Array<Record<string, string>> } | null} previous
  */
-function buildDraftRowsFromFiles(files, runDate, previous) {
+function buildDraftRowsFromFiles(files, previous) {
+  // The page-level run date is shared across all daily rows, so row drafts only keep editable business fields.
   const previousMap = new Map();
 
   if (previous) {
@@ -556,7 +568,6 @@ function buildDraftRowsFromFiles(files, runDate, previous) {
         brutto: current?.brutto ?? "-",
         netto: current?.netto ?? "-",
         tax_id: current?.tax_id ?? "-",
-        run_date: current?.run_date ?? runDate ?? "-",
         score: current?.score ?? {},
         raw_result: current?.raw_result ?? {},
         preview_path: current?.preview_path ?? "",
@@ -573,7 +584,6 @@ function buildDraftRowsFromFiles(files, runDate, previous) {
         filename: file.name,
         brutto: current?.brutto ?? "-",
         netto: current?.netto ?? "-",
-        run_date: current?.run_date ?? runDate ?? "-",
         score: current?.score ?? {},
         raw_result: current?.raw_result ?? {},
         preview_path: current?.preview_path ?? "",
@@ -609,10 +619,10 @@ function buildDraftRowsFromFiles(files, runDate, previous) {
 /**
  * Build editable rows from backend review rows payload.
  * @param {Array<Record<string, unknown>>} rows
- * @param {string} runDate
  * @param {{ bar: Array<Record<string, string>>; zbon: Array<Record<string, string>>; office: Array<Record<string, string>> } | null} previous
  */
-function buildDraftRowsFromBackend(rows, runDate, previous) {
+function buildDraftRowsFromBackend(rows, previous) {
+  // Backend may still include run_date in result, but the shared review control is the source of truth.
   const previousMap = new Map();
 
   if (previous) {
@@ -631,17 +641,17 @@ function buildDraftRowsFromBackend(rows, runDate, previous) {
     const rowId = normalizeCellValue(row.row_id, `${category || "unknown"}:${filename}:${index}`);
     const result = row.result && typeof row.result === "object" ? row.result : {};
     const current = previousMap.get(rowId);
-      const common = {
-        id: rowId,
-        category,
-        filename,
-        preview_url: normalizeCellValue(row.preview_url, ""),
-        preview_path: normalizeCellValue(row.preview_path, ""),
-        path: normalizeCellValue(row.path, ""),
-        skip_reason: typeof row.skip_reason === "string" ? row.skip_reason : "",
-        score: row.score && typeof row.score === "object" ? row.score : {},
-        raw_result: result,
-      };
+    const common = {
+      id: rowId,
+      category,
+      filename,
+      preview_url: normalizeCellValue(row.preview_url, ""),
+      preview_path: normalizeCellValue(row.preview_path, ""),
+      path: normalizeCellValue(row.path, ""),
+      skip_reason: typeof row.skip_reason === "string" ? row.skip_reason : "",
+      score: row.score && typeof row.score === "object" ? row.score : {},
+      raw_result: result,
+    };
 
     if (category === "bar") {
       draft.bar.push({
@@ -650,7 +660,6 @@ function buildDraftRowsFromBackend(rows, runDate, previous) {
         brutto: current?.brutto ?? normalizeCellValue(result.brutto),
         netto: current?.netto ?? normalizeCellValue(result.netto),
         tax_id: current?.tax_id ?? normalizeCellValue(result.tax_id),
-        run_date: current?.run_date ?? normalizeCellValue(result.run_date, runDate || "-"),
       });
       return;
     }
@@ -660,7 +669,6 @@ function buildDraftRowsFromBackend(rows, runDate, previous) {
         ...common,
         brutto: current?.brutto ?? normalizeCellValue(result.brutto),
         netto: current?.netto ?? normalizeCellValue(result.netto),
-        run_date: current?.run_date ?? normalizeCellValue(result.run_date, runDate || "-"),
       });
       return;
     }
@@ -685,8 +693,9 @@ function buildDraftRowsFromBackend(rows, runDate, previous) {
 /**
  * Convert local draft tables into API review rows payload.
  * @param {{ bar: Array<Record<string, string>>; zbon: Array<Record<string, string>>; office: Array<Record<string, string>> }} draft
+ * @param {string} runDate
  */
-function composeReviewRows(draft) {
+function composeReviewRows(draft, runDate) {
   return [...draft.bar, ...draft.zbon, ...draft.office]
     .map((row) => {
       const category = String(row.category || "").toLowerCase();
@@ -697,11 +706,11 @@ function composeReviewRows(draft) {
         baseResult.brutto = row.brutto;
         baseResult.netto = row.netto;
         baseResult.tax_id = row.tax_id;
-        baseResult.run_date = row.run_date;
+        baseResult.run_date = runDate;
       } else if (category === "zbon") {
         baseResult.brutto = row.brutto;
         baseResult.netto = row.netto;
-        baseResult.run_date = row.run_date;
+        baseResult.run_date = runDate;
       } else if (category === "office") {
         baseResult.type = row.type;
         baseResult.sender = row.sender;
