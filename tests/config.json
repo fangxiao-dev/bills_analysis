@@ -14,8 +14,23 @@
       "Dortmund": {
         "address": "Reinoldistr.8 44135 Dortmund"
       },
-      "-test-": {
-        "address": "-test-"
+      "Kaiserslautern": {
+        "address": "Reinoldistr.8 44135 Dortmund"
+      },
+      "Mainz": {
+        "address": "Reinoldistr.8 44135 Dortmund",
+        "receiver_name": "Ramen Ippin Göttingen GmbH"
+      },
+      "Kassel": {
+        "address": "Reinoldistr.8 44135 Dortmund",
+        "receiver_name": "IP Kassel GmbH"
+      },
+      "Europa": {
+        "address": "Reinoldistr.8 44135 Dortmund"
+      },
+      "Düsseldorf": {
+        "address": "Dreischeibenhaus 1 40211 Düsseldorf",
+        "receiver_name": "Fujigawa Food GmbH"
       }
     }
   }

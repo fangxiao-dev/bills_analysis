@@ -185,6 +185,16 @@ describe("uploadClient.real", () => {
               receiver_name: "Ramen Ippin Dortmund GmbH",
               receiver_address: "Reinoldistr.8 44135 Dortmund",
             },
+            {
+              city: "Mainz",
+              receiver_name: "Ramen Ippin Göttingen GmbH",
+              receiver_address: "Reinoldistr.8 44135 Dortmund",
+            },
+            {
+              city: "Düsseldorf",
+              receiver_name: "Fujigawa Food GmbH",
+              receiver_address: "Dreischeibenhaus 1 40211 Düsseldorf",
+            },
           ],
         }),
     });
@@ -192,7 +202,7 @@ describe("uploadClient.real", () => {
 
     const payload = await client.getOfficeReceiverOptions();
     expect(payload.default_city).toBe("Dortmund");
-    expect(payload.options).toHaveLength(1);
+    expect(payload.options).toHaveLength(3);
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://127.0.0.1:8000/v1/batches/office-receiver-options",
       expect.objectContaining({ method: "GET" }),

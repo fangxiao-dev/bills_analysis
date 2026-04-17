@@ -10,6 +10,7 @@ from typing import Any, Iterable
 import fitz  # PyMuPDF
 
 from bills_analysis.integrations.office_semantics import match_receiver_address, resolve_receiver_ok
+from bills_analysis.integrations.office_receiver_mapping import resolve_expected_receiver_from_metadata
 from bills_analysis.vlm import prompts_dict
 
 THRESHOLD_RECEIPT_RATIO = 2.0
@@ -111,6 +112,7 @@ class AzurePipelineAdapter:
         backup_dest_dir: Path,
         category: str,
         run_date: str,
+        batch_metadata: dict[str, Any] | None = None,
         results_dir: Path | None = None,
         results_path: Path | None = None,
         max_pages: int = 4,
@@ -162,6 +164,7 @@ class AzurePipelineAdapter:
                     backup_dest_dir=backup_dest_dir,
                     category=category,
                     run_date=run_date,
+                    batch_metadata=batch_metadata,
                     max_pages=max_pages,
                     dpi=dpi,
                     purpose=purpose,
@@ -189,6 +192,7 @@ class AzurePipelineAdapter:
         max_pages: int,
         dpi: int,
         purpose: str,
+        batch_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """Process one PDF file with extraction, scoring and archive generation."""
 
@@ -295,10 +299,11 @@ class AzurePipelineAdapter:
                 extracted_kv["sender"] = office_info.get("sender")
                 receiver = office_info.get("receiver")
                 extracted_kv["receiver_name"] = receiver
-                correct_receiver = "Ramen Ippin Dortmund GmbH"
                 receiver_address = office_info.get("receiver_address")
                 extracted_kv["receiver_address"] = receiver_address
-                expected_address = "Reinoldistr.8 44135 Dortmund"
+                expected = resolve_expected_receiver_from_metadata(batch_metadata)
+                correct_receiver = expected["receiver_name"].strip()
+                expected_address = expected["receiver_address"].strip()
                 extracted_kv["receiver_ok"] = resolve_receiver_ok(
                     office_info,
                     expected_receiver=correct_receiver,
