@@ -137,7 +137,7 @@ function Copy-DirectoryWithFilter {
             continue
         }
 
-        $destPath = Join-Path $DestDir $relPath
+        $destPath = Join-Path $DestDir $DirName $relPath
         $destParent = Split-Path $destPath
 
         if ($item.PSIsContainer) {
