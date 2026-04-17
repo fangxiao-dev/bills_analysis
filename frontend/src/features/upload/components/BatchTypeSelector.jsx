@@ -6,13 +6,14 @@ import { useTranslation } from "react-i18next";
  * @param {{
  *  value: "daily" | "office";
  *  onChange: (value: "daily" | "office") => void;
+ *  testId?: string;
  * }} props
  */
-export function BatchTypeSelector({ value, onChange }) {
+export function BatchTypeSelector({ value, onChange, testId }) {
   const { t } = useTranslation();
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" data-testid={testId}>
       <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ledger-ink">{t("upload.batchType")}</p>
       <div className="flex gap-2">
         <Button
@@ -21,6 +22,7 @@ export function BatchTypeSelector({ value, onChange }) {
           onClick={() => onChange("daily")}
           aria-pressed={value === "daily"}
           className="min-w-20"
+          data-testid="batch-type-daily"
         >
           {t("upload.daily")}
         </Button>
@@ -30,6 +32,7 @@ export function BatchTypeSelector({ value, onChange }) {
           onClick={() => onChange("office")}
           aria-pressed={value === "office"}
           className="min-w-20"
+          data-testid="batch-type-office"
         >
           {t("upload.office")}
         </Button>

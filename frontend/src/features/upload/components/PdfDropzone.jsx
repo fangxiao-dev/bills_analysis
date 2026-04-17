@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
  *  description?: string;
  *  buttonText?: string;
  *  allowMultiple?: boolean;
+ *  testId?: string;
  * }} props
  */
 export function PdfDropzone({
@@ -20,6 +21,7 @@ export function PdfDropzone({
   description,
   buttonText,
   allowMultiple = true,
+  testId,
 }) {
   const { t } = useTranslation();
   const inputRef = useRef(null);
@@ -35,7 +37,7 @@ export function PdfDropzone({
   );
 
   return (
-    <section className={className}>
+    <section className={className} data-testid={testId}>
       <div
         role="button"
         tabIndex={0}

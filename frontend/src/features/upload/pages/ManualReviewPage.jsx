@@ -313,6 +313,7 @@ export function ManualReviewPage() {
 
   return (
     <AppFrame>
+      <div data-testid="manual-review-page">
       <header className="app-topbar section-enter">
         <div>
           <h1>{t("review.title")}</h1>
@@ -354,6 +355,7 @@ export function ManualReviewPage() {
           onChangeCell={(rowId, key, value) => onChangeCell("bar", rowId, key, value)}
           onViewRow={onViewRow}
           onRemoveRow={(rowId) => onRemoveRow("bar", rowId)}
+          testId="review-table-bar"
         />
 
         <ReviewCategoryTable
@@ -364,6 +366,7 @@ export function ManualReviewPage() {
           onChangeCell={(rowId, key, value) => onChangeCell("zbon", rowId, key, value)}
           onViewRow={onViewRow}
           onRemoveRow={(rowId) => onRemoveRow("zbon", rowId)}
+          testId="review-table-zbon"
         />
 
         <ReviewCategoryTable
@@ -374,6 +377,7 @@ export function ManualReviewPage() {
           onChangeCell={(rowId, key, value) => onChangeCell("office", rowId, key, value)}
           onViewRow={onViewRow}
           onRemoveRow={(rowId) => onRemoveRow("office", rowId)}
+          testId="review-table-office"
         />
 
         <section className="ledger-card p-4">
@@ -431,7 +435,7 @@ export function ManualReviewPage() {
               <div className="flex flex-col gap-1 text-sm text-ledger-smoke">
                 <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.chooseLocalExcel")}</span>
                 <div className="flex items-center gap-2">
-                  <Button type="button" variant="ghost" onClick={onTriggerLocalExcelPicker}>
+                  <Button type="button" variant="ghost" onClick={onTriggerLocalExcelPicker} data-testid="local-merge-source-button">
                     {t("review.chooseFile")}
                   </Button>
                   <span className="text-sm text-ledger-smoke">{selectedLocalFileName || t("review.noFileSelected")}</span>
@@ -466,7 +470,7 @@ export function ManualReviewPage() {
           ) : null}
 
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button type="button" variant="primary" onClick={() => void onSubmit()} disabled={submitDisabled}>
+            <Button type="button" variant="primary" onClick={() => void onSubmit()} disabled={submitDisabled} data-testid="submit-review-button">
               {t("common.submit")}
             </Button>
             {shouldRenderReportTypeErrorButton ? (
@@ -479,6 +483,7 @@ export function ManualReviewPage() {
                 type="button"
                 variant="success"
                 onClick={() => void onOpenMergedResult()}
+                data-testid="open-merged-result-button"
               >
                 {t("review.openMergedResult")}
               </Button>
@@ -496,6 +501,7 @@ export function ManualReviewPage() {
         {reportFeedback ? <AlertBanner message={reportFeedback} /> : null}
         {state.systemError ? <AlertBanner tone="error" message={state.systemError} /> : null}
       </section>
+      </div>
     </AppFrame>
   );
 }

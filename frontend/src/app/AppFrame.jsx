@@ -42,6 +42,7 @@ export function AppFrame({ children }) {
             type="button"
             className={`app-nav-item ${i18n.language === "de" ? "active" : ""}`}
             onClick={() => onChangeLanguage("de")}
+            data-testid="language-button-de"
           >
             {t("app.language.de")}
           </button>
@@ -49,6 +50,7 @@ export function AppFrame({ children }) {
             type="button"
             className={`app-nav-item ${i18n.language === "en" ? "active" : ""}`}
             onClick={() => onChangeLanguage("en")}
+            data-testid="language-button-en"
           >
             {t("app.language.en")}
           </button>
@@ -56,6 +58,7 @@ export function AppFrame({ children }) {
             type="button"
             className={`app-nav-item ${i18n.language === "zh" ? "active" : ""}`}
             onClick={() => onChangeLanguage("zh")}
+            data-testid="language-button-zh"
           >
             {t("app.language.zh")}
           </button>

@@ -3,3 +3,5 @@ dist/
 .vite/
 coverage/
 .env.local
+playwright-report/
+test-results/

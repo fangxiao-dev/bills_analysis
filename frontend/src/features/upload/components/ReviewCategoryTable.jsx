@@ -16,9 +16,10 @@ import { Button } from "../../../shared/ui/Button";
  *  onChangeCell: (rowId: string, key: string, value: string) => void;
  *  onViewRow?: (row: Record<string, string>) => void;
  *  onRemoveRow?: (rowId: string) => void;
+ *  testId?: string;
  * }} props
  */
-export function ReviewCategoryTable({ title, description, rows, columns, onChangeCell, onViewRow, onRemoveRow }) {
+export function ReviewCategoryTable({ title, description, rows, columns, onChangeCell, onViewRow, onRemoveRow, testId }) {
   const { t } = useTranslation();
   const [skipPopover, setSkipPopover] = useState(null);
 
@@ -52,7 +53,7 @@ export function ReviewCategoryTable({ title, description, rows, columns, onChang
   }
 
   return (
-    <section className="ledger-card p-4">
+    <section className="ledger-card p-4" data-testid={testId}>
       <header className="mb-3">
         <h3 className="text-lg font-semibold">{title}</h3>
         <p className="mt-1 text-sm text-ledger-smoke">{description}</p>

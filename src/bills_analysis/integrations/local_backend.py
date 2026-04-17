@@ -24,6 +24,55 @@ from bills_analysis.services.merge_service import merge_daily, merge_office
 LOGGER = logging.getLogger(__name__)
 
 
+def _is_azure_mock_enabled() -> bool:
+    """Return whether local backend should bypass real Azure integrations."""
+
+    return os.getenv("AZURE_MOCK", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _mock_analyze_pdf_with_azure(*, model_id: str, return_fields: bool) -> Any:
+    """Return deterministic Azure DI payloads for local E2E smoke mode."""
+
+    if model_id == "prebuilt-invoice":
+        invoice_payload = {
+            "brutto": 120.5,
+            "netto": 100.0,
+            "invoice_id": "INV-1001",
+            "confidence_brutto": 0.95,
+            "confidence_netto": 0.92,
+            "confidence_invoice_id": 0.9,
+        }
+        if return_fields:
+            return invoice_payload, {"invoice_id": "INV-1001", "sender": "Vendor GmbH"}
+        return invoice_payload
+
+    receipt_payload = {
+        "store_name": "Demo Store",
+        "brutto": 12.34,
+        "netto": 10.0,
+        "total_tax": 2.34,
+        "confidence_store_name": 0.9,
+        "confidence_brutto": 0.95,
+        "confidence_netto": 0.9,
+        "confidence_total_tax": 0.86,
+    }
+    if return_fields:
+        return receipt_payload, {}
+    return receipt_payload
+
+
+def _mock_extract_office_semantics(distilled_fields: dict[str, Any]) -> dict[str, Any]:
+    """Return deterministic Office semantics payload for local smoke mode."""
+
+    return {
+        "purpose": "office-cost",
+        "sender": str(distilled_fields.get("sender") or "Vendor GmbH"),
+        "receiver": "Ramen Ippin Dortmund GmbH",
+        "receiver_address": "Reinoldistr.8 44135 Dortmund",
+        "receiver_ok": True,
+    }
+
+
 def _compress_pdf_for_archive(
     pdf_path: Path,
     *,
@@ -67,6 +116,9 @@ def _analyze_pdf_with_azure(
 ) -> Any:
     """Run Azure DI extraction for one PDF via validated pipeline adapter."""
 
+    if _is_azure_mock_enabled():
+        return _mock_analyze_pdf_with_azure(model_id=model_id, return_fields=return_fields)
+
     from bills_analysis.extract_by_azure_api import analyze_document_with_azure
 
     return analyze_document_with_azure(
@@ -79,6 +131,9 @@ def _analyze_pdf_with_azure(
 def _clean_invoice_fields(fields_payload: dict[str, Any]) -> dict[str, Any]:
     """Normalize raw invoice fields before Office semantic enrichment."""
 
+    if _is_azure_mock_enabled():
+        return dict(fields_payload)
+
     from bills_analysis.extract_by_azure_api import clean_invoice_json
 
     return clean_invoice_json(fields_payload)
@@ -86,6 +141,9 @@ def _clean_invoice_fields(fields_payload: dict[str, Any]) -> dict[str, Any]:
 
 def _extract_office_semantics(distilled_fields: dict[str, Any]) -> dict[str, Any]:
     """Extract Office category/sender/receiver semantic fields with AOAI."""
+
+    if _is_azure_mock_enabled():
+        return _mock_extract_office_semantics(distilled_fields)
 
     from bills_analysis.extract_by_azure_api import extract_office_invoice_azure
 

@@ -11,6 +11,7 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: "./src/test/setup.js",
     css: true,
+    exclude: ["e2e/**", "node_modules/**", "dist/**"],
     coverage: {
       reporter: ["text", "html"],
     },

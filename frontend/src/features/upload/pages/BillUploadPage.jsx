@@ -22,6 +22,7 @@ export function BillUploadPage() {
   const canGoReview =
     state.batch &&
     (state.batch.status === "review_ready" || state.batch.status === "merging" || state.batch.status === "merged");
+  const hasRequiredDailyFiles = state.batchType !== "daily" || state.files.some((entry) => entry.category === "zbon");
 
   const isRefreshing =
     state.phase === "creating" ||
@@ -119,6 +120,7 @@ export function BillUploadPage() {
 
   return (
     <AppFrame>
+      <div data-testid="upload-page">
       <header className="app-topbar section-enter">
         <div>
           <h1>{t("upload.title")}</h1>
@@ -146,7 +148,7 @@ export function BillUploadPage() {
       <section className="ledger-shell">
         <section className="section-enter ledger-card p-4">
           <div className="grid gap-4 md:grid-cols-[1.1fr_1fr] md:items-end">
-            <BatchTypeSelector value={state.batchType} onChange={handleBatchTypeChange} />
+            <BatchTypeSelector value={state.batchType} onChange={handleBatchTypeChange} testId="batch-type-selector" />
             <RunDatePicker value={state.runDate} onChange={actions.setRunDate} />
           </div>
           <p className="mt-2 text-xs text-ledger-smoke">{t("upload.switchTypeHint")}</p>
@@ -160,6 +162,7 @@ export function BillUploadPage() {
                 description={t("upload.barDesc")}
                 buttonText={t("common.addPdf")}
                 allowMultiple
+                testId="bar-dropzone"
               />
               <PdfDropzone
                 onFilesAdded={(files) => actions.addFiles(files, "zbon")}
@@ -168,6 +171,7 @@ export function BillUploadPage() {
                 description={t("upload.zbonDesc")}
                 buttonText={t("common.addPdf")}
                 allowMultiple={false}
+                testId="zbon-dropzone"
               />
             </div>
           ) : (
@@ -182,6 +186,7 @@ export function BillUploadPage() {
                       disabled={flags.isBusy || state.officeReceiverLoading || !state.officeReceiverOptions.length}
                       className="rounded-md border border-ledger-line bg-white px-3 py-2 text-sm"
                       aria-label={t("upload.officeReceiverCityLabel")}
+                      data-testid="office-receiver-city-select"
                     >
                       {state.officeReceiverOptions.map((item) => (
                         <option key={item.city} value={item.city}>
@@ -233,6 +238,7 @@ export function BillUploadPage() {
                 title={t("upload.officeTitle")}
                 description={t("upload.officeDesc")}
                 buttonText={t("common.addPdf")}
+                testId="office-dropzone"
               />
             </div>
           )}
@@ -264,7 +270,8 @@ export function BillUploadPage() {
               type="button"
               variant="primary"
               onClick={() => void actions.submitBatch()}
-              disabled={!flags.canSubmitBatch || !state.files.length}
+              disabled={!flags.canSubmitBatch || !state.files.length || !hasRequiredDailyFiles}
+              data-testid="create-batch-button"
             >
               {t("upload.createBatch")}
             </Button>
@@ -276,6 +283,7 @@ export function BillUploadPage() {
               aria-label={t("upload.retryPoll")}
               title={t("upload.retryPoll")}
               className="px-2"
+              data-testid="retry-poll-button"
             >
               <svg
                 width="16"
@@ -294,7 +302,13 @@ export function BillUploadPage() {
                 />
               </svg>
             </Button>
-            <Button type="button" variant={canGoReview ? "success" : "ghost"} onClick={() => navigate("/manual-review")} disabled={!canGoReview}>
+            <Button
+              type="button"
+              variant={canGoReview ? "success" : "ghost"}
+              onClick={() => navigate("/manual-review")}
+              disabled={!canGoReview}
+              data-testid="go-review-button"
+            >
               {t("upload.goManualReview")}
             </Button>
           </div>
@@ -310,6 +324,7 @@ export function BillUploadPage() {
           {flags.isDone && !statusMessage ? <div className="mt-3"><AlertBanner message={t("upload.doneHint")} /></div> : null}
         </section>
       </section>
+      </div>
     </AppFrame>
   );
 }
