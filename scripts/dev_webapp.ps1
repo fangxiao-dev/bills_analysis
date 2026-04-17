@@ -54,47 +54,66 @@ function Get-LaunchConfig {
     }
 }
 
-function New-PowerShellCommand {
+function New-BackendScript {
     <#
     """
-    Build a PowerShell command string that keeps the launched window open.
+    Write backend launch commands to a temp .ps1 file using a here-string,
+    avoiding quote-escaping issues with array construction.
     """
     #>
 
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$Title,
-        [Parameter(Mandatory = $true)]
+        [string]$Mode,
         [string]$RepoRoot,
-        [Parameter(Mandatory = $true)]
-        [string[]]$Lines
+        [string]$Port,
+        [string]$CorsOrigins
     )
 
-    $escapedRepoRoot = $RepoRoot.Replace("'", "''")
-    $commandLines = @(
-        '$Host.UI.RawUI.WindowTitle = ''' + $Title.Replace("'", "''") + '''',
-        'Set-Location ''' + $escapedRepoRoot + ''''
-    ) + $Lines
-    return ($commandLines -join "; ")
+    $tmpFile = [System.IO.Path]::GetTempFileName() + ".ps1"
+    Set-Content -Path $tmpFile -Encoding UTF8 -Value @"
+`$Host.UI.RawUI.WindowTitle = 'backend-$Mode'
+Set-Location '$RepoRoot'
+`$env:PORT = '$Port'
+`$env:CORS_ALLOW_ORIGINS = '$CorsOrigins'
+uv run invoice-web-api
+"@
+    return $tmpFile
+}
+
+function New-FrontendScript {
+    <#
+    """
+    Write frontend launch commands to a temp .ps1 file using a here-string.
+    """
+    #>
+
+    param(
+        [string]$Mode,
+        [string]$RepoRoot,
+        [string]$Command
+    )
+
+    $tmpFile = [System.IO.Path]::GetTempFileName() + ".ps1"
+    Set-Content -Path $tmpFile -Encoding UTF8 -Value @"
+`$Host.UI.RawUI.WindowTitle = 'frontend-$Mode'
+Set-Location '$RepoRoot'
+$Command
+"@
+    return $tmpFile
 }
 
 $repoRoot = Get-RepoRoot
 $config = Get-LaunchConfig -SelectedMode $Mode
 
-$backendLines = @(
-    '$env:PORT=''' + $config.BackendPort + '''',
-    '$env:CORS_ALLOW_ORIGINS=''' + $config.CorsOrigins + '''',
-    'uv run invoice-web-api'
-)
-$backendCommand = New-PowerShellCommand -Title ("backend-" + $Mode) -RepoRoot $repoRoot -Lines $backendLines
-$frontendCommand = New-PowerShellCommand -Title ("frontend-" + $Mode) -RepoRoot $repoRoot -Lines @($config.FrontendCommand)
+$backendScript = New-BackendScript -Mode $Mode -RepoRoot $repoRoot -Port $config.BackendPort -CorsOrigins $config.CorsOrigins
+$frontendScript = New-FrontendScript -Mode $Mode -RepoRoot $repoRoot -Command $config.FrontendCommand
 
 Write-Output ("Mode: " + $Mode)
 Write-Output ("Repo: " + $repoRoot)
 Write-Output ("Backend: PORT=" + $config.BackendPort + " CORS_ALLOW_ORIGINS=" + $config.CorsOrigins)
 Write-Output ("Backend health: " + $config.BackendUrl)
 Write-Output ("Frontend url: " + $config.FrontendUrl)
-Write-Output ("Backend command: " + ($backendLines -join " ; "))
+Write-Output ("Backend command: PORT=" + $config.BackendPort + " | uv run invoice-web-api")
 Write-Output ("Frontend command: " + $config.FrontendCommand)
 
 if ($DryRun) {
@@ -102,7 +121,7 @@ if ($DryRun) {
     exit 0
 }
 
-Start-Process -FilePath "powershell" -WorkingDirectory $repoRoot -ArgumentList @("-NoExit", "-Command", $backendCommand) | Out-Null
-Start-Process -FilePath "powershell" -WorkingDirectory $repoRoot -ArgumentList @("-NoExit", "-Command", $frontendCommand) | Out-Null
+Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-ExecutionPolicy", "Bypass", "-File", $backendScript | Out-Null
+Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-ExecutionPolicy", "Bypass", "-File", $frontendScript | Out-Null
 
 Write-Output "Launched backend and frontend in separate PowerShell windows."

@@ -133,7 +133,11 @@ export function uploadFlowReducer(state, action) {
         reviewRows,
         phase: files.length ? state.phase : "idle",
       };
-      return state.batch ? invalidateBatchSnapshot(nextState, files.length) : nextState;
+      if (state.batch) {
+        // Keep batch when files remain; full reset only if queue is emptied
+        return files.length ? nextState : invalidateBatchSnapshot(nextState, 0);
+      }
+      return nextState;
     }
 
     case "SET_FORM_ERROR":
