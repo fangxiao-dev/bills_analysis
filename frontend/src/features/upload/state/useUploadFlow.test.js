@@ -379,7 +379,7 @@ describe("useUploadFlow", () => {
     expect(result.current.state.reportTypeErrorConsumed).toBe(false);
   });
 
-  it("filters fetched review rows by current queued files", async () => {
+  it("invalidates existing batch snapshot after queue file removal", async () => {
     const queuedBatch = {
       schema_version: "v1",
       batch_id: "b-review",
@@ -435,8 +435,11 @@ describe("useUploadFlow", () => {
       await result.current.actions.fetchReviewRows();
     });
 
-    expect(result.current.state.reviewRows).toHaveLength(1);
-    expect(result.current.state.reviewRows[0].filename).toBe("01_keep.pdf");
+    expect(result.current.state.files).toHaveLength(1);
+    expect(result.current.state.phase).toBe("ready");
+    expect(result.current.state.batch).toBeNull();
+    expect(result.current.state.reviewRows).toEqual([]);
+    expect(client.getReviewRows).not.toHaveBeenCalled();
   });
   it("keeps options empty when office receiver options response is empty", async () => {
     const client = createMockUploadClient({ latencyMs: 0 });

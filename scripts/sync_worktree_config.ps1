@@ -1,6 +1,8 @@
 <#
 """
 Sync shared config files from current worktree to other worktrees.
+Directories are copied; local env-style files are hard-linked so worktrees share one source of truth
+until a task explicitly materializes a private copy for editing.
 Supports dry-run by default and apply mode via -Apply.
 """
 #>
@@ -17,6 +19,12 @@ $syncItems = @(
     ".agents/",
     ".claude/rules/",
     ".claude/skills/",
+    ".env",
+    ".env.docker",
+    "frontend/.env.local"
+)
+
+$linkFirstFiles = @(
     ".env",
     ".env.docker",
     "frontend/.env.local"
@@ -71,6 +79,8 @@ foreach ($target in $targets) {
         if (-not $Apply) {
             if ($isDir) {
                 Write-Host "  [dry-run] copy dir $srcFull -> $dstFull"
+            } elseif ($linkFirstFiles -contains $normalized) {
+                Write-Host "  [dry-run] hard-link file $srcFull -> $dstFull"
             } else {
                 Write-Host "  [dry-run] copy file $srcFull -> $dstFull"
             }
@@ -84,8 +94,16 @@ foreach ($target in $targets) {
             Write-Host "  COPIED dir: $srcFull -> $dstFull"
         } else {
             New-Item -ItemType Directory -Path (Split-Path $dstFull -Parent) -Force | Out-Null
-            Copy-Item -Path $srcFull -Destination $dstFull -Force
-            Write-Host "  COPIED file: $srcFull -> $dstFull"
+            if (Test-Path $dstFull) {
+                Remove-Item -LiteralPath $dstFull -Force
+            }
+            if ($linkFirstFiles -contains $normalized) {
+                New-Item -ItemType HardLink -Path $dstFull -Target $srcFull | Out-Null
+                Write-Host "  LINKED file: $srcFull -> $dstFull"
+            } else {
+                Copy-Item -Path $srcFull -Destination $dstFull -Force
+                Write-Host "  COPIED file: $srcFull -> $dstFull"
+            }
         }
         $changed++
     }

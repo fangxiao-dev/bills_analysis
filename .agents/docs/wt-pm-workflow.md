@@ -85,9 +85,16 @@ git worktree add -b feat/TC-007-batch-delete ../wt-TC-007 main
 执行约束（Windows/Agent 环境）：
 - worktree 默认放在与主工作目录同级的可见目录（如 `../wt-TC-007`）
 - 如果仓库元数据或目标路径不在当前沙箱可写范围，需先申请提权再执行 `git worktree add/remove`。
-- `scripts/sync_worktree_config.sh` 若在 Windows 无法用 `bash` 执行，需使用等价 PowerShell 同步流程。
+- 共享配置同步统一使用 `scripts/sync_worktree_config.ps1`。
 - `sync_worktree_config` 的同步方向是“当前目录 -> 其他 worktree”；因此要把 `dev/main` 的 `.env` 等配置同步到任务 worktree 时，**必须在 trunk 目录执行**脚本。
 - 若任务是“续做已有 worktree”（非新建），也必须先在 trunk 执行 `sync_worktree_config`（dry-run + apply），再进入该 task worktree 开发。
+
+共享依赖/配置规则：
+- 对可共享的本地运行时资产采用 **link-first, copy-on-write**：优先从 local/trunk worktree 建立链接，而不是复制。
+- 典型共享对象：`.env`、`.env.docker`、`frontend/.env.local`、`frontend/node_modules`。
+- 一旦任务需要改这些共享对象，必须先在 task worktree 中解除共享并复制出私有副本，再修改私有副本。
+- Agent 不得直接修改仍处于共享链接状态的文件/目录。
+- `frontend/node_modules` 的共享/私有化统一通过 `scripts/sync_frontend_node_modules.ps1` 管理：`-Mode Status` / `-Mode Link` / `-Mode Materialize`。
 
 ### Plan
 
@@ -160,7 +167,7 @@ API schema 作为前后端（或模块间）的集成边界。Contract 一旦冻
 | 2. Task Creation & Planning | Trunk | `wt-plan` | Executor | 更新 `plans/todo_current.md`；`quick-plan` 生成三文件；状态升为 `PLANNED` |
 | 3. Commit Plan to Trunk | Trunk | `wt-plan` | Executor | `git commit` 规划产出物（`todo_current.md` + 三 plan 文件）到 trunk，形成独立审计节点 |
 | 4. Worktree Setup | Trunk | `wt-plan` | Executor | 新建：`git worktree add -b feat/<id>-<slug>`；续做：跳过 add；两种情况都执行 `sync_worktree_config` |
-| 5. Environment Init | Worktree | `wt-dev` | Executor | `uv sync` + `pnpm install`；最小可运行检查（首次运行时执行） |
+| 5. Environment Init | Worktree | `wt-dev` | Executor | `uv sync` + link-first runtime reuse；只有在依赖需变更或共享依赖不可用时才执行本地 `pnpm install`；首次运行时做最小可运行检查 |
 | 6. Sync Trunk + Regression | Worktree | `wt-dev` | Executor | `git merge dev`，解决冲突；`pytest` + `pnpm test` |
 | 7. Implementation | Worktree | `wt-dev` | Executor | 编码、单元测试、迭代；每子步骤后更新 `progress.md` |
 | 8. [PAUSE] Manual Testing | Worktree | `wt-dev` | Human | SKILL 输出测试清单后等待；人工确认通过后继续 |

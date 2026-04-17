@@ -75,9 +75,9 @@ export function FileQueuePanel({ files, onRemove, batchInputs, skipReasonByName 
           </tr>
         </thead>
         <tbody>
-          {files.map((entry, index) => {
-            const inputStatus = hasBatchInputs ? resolveInputStatus(entry, index, batchInputs) : "pending";
-            const inputError = hasBatchInputs ? resolveInputError(entry, index, batchInputs) : null;
+          {files.map((entry) => {
+            const inputStatus = hasBatchInputs ? resolveInputStatus(entry, batchInputs) : "pending";
+            const inputError = hasBatchInputs ? resolveInputError(entry, batchInputs) : null;
             const skipReason = resolveSkipReason(entry, skipReasonByName);
             // Override status to "skipped" when skip_reason is known, so the badge
             // reflects the page-limit skip rather than showing a misleading "extracted".
@@ -203,35 +203,27 @@ function ItemStatusBadge({ status, t }) {
 }
 
 /**
- * Match a local file entry to its backend input status by index or filename.
+ * Match a local file entry to its backend input status by filename only.
  * @param {{ name: string }} entry
- * @param {number} index
  * @param {Array<{ path: string; status?: string | null }>} batchInputs
  */
-function resolveInputStatus(entry, index, batchInputs) {
+function resolveInputStatus(entry, batchInputs) {
   const byName = batchInputs.find((input) => normalizeQueueFilename(input.path) === entry.name);
   if (byName) {
     return byName.status || null;
-  }
-  if (batchInputs[index]) {
-    return batchInputs[index].status || null;
   }
   return null;
 }
 
 /**
- * Match a local file entry to backend input error by filename first, then index fallback.
+ * Match a local file entry to backend input error by filename only.
  * @param {{ name: string }} entry
- * @param {number} index
  * @param {Array<{ path: string; error?: unknown }>} batchInputs
  */
-function resolveInputError(entry, index, batchInputs) {
+function resolveInputError(entry, batchInputs) {
   const byName = batchInputs.find((input) => normalizeQueueFilename(input.path) === entry.name);
   if (byName) {
     return byName.error || null;
-  }
-  if (batchInputs[index]) {
-    return batchInputs[index].error || null;
   }
   return null;
 }

@@ -27,6 +27,25 @@ describe("FileQueuePanel warning popover", () => {
     expect(screen.queryByText("failed")).not.toBeInTheDocument();
   });
 
+  it("does not fall back to index when current file name does not match backend input", () => {
+    render(
+      <FileQueuePanel
+        files={[{ id: "f-new", name: "new.pdf", size: 1024, category: "office" }]}
+        onRemove={vi.fn()}
+        batchInputs={[
+          {
+            path: "01_old.pdf",
+            status: "skipped",
+            error: null,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.queryByText("skipped")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "View skip reason" })).not.toBeInTheDocument();
+  });
+
   it("shows skipped warning icon immediately from input status even before skip_reason is loaded", () => {
     render(
       <FileQueuePanel

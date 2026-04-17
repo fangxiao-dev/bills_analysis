@@ -91,6 +91,11 @@ Goal: prepare runnable backend and frontend environments in the task worktree.
 
 **Skip this phase if:** `progress.<plan_id>.md` records that environment init was already completed.
 
+Shared runtime artifacts follow a **link-first, copy-on-write** rule:
+- Keep linked env files from trunk/local worktree unless this task explicitly needs different values.
+- Prefer reusing a linked `frontend/node_modules` from the local/trunk worktree when package manifests are unchanged and no dependency work is planned.
+- If this task needs to change env values or dependency manifests/installs, first replace the shared link with a private local copy (or a fresh local install), then mutate that private copy only.
+
 Commands:
 
 ```bash
@@ -99,6 +104,11 @@ corepack enable
 corepack prepare pnpm@latest --activate
 pnpm --dir frontend install
 ```
+
+Execution rule:
+- Check the current dependency state with `powershell -ExecutionPolicy Bypass -File scripts/sync_frontend_node_modules.ps1 -Mode Status`.
+- If package manifests are unchanged and no dependency work is planned, prefer `powershell -ExecutionPolicy Bypass -File scripts/sync_frontend_node_modules.ps1 -Mode Link` to reuse the shared `frontend/node_modules`.
+- If dependency-related files will change (`frontend/package.json`, `pnpm-lock.yaml`, etc.), run `powershell -ExecutionPolicy Bypass -File scripts/sync_frontend_node_modules.ps1 -Mode Materialize` before mutating dependencies, then run `pnpm --dir frontend install` as needed.
 
 Minimal verification checks:
 

@@ -135,6 +135,10 @@ Rules:
 ## Phase 4: Create Task Worktree + Sync Config
 
 Goal: create an isolated task branch/worktree and sync shared config files.
+Shared runtime artifacts follow a **link-first, copy-on-write** rule:
+- `.env`, `.env.docker`, `frontend/.env.local` should be linked from trunk/local worktree into the task worktree by default.
+- `.agents/`, `.claude/rules/`, `.claude/skills/` continue to sync as copied files/directories.
+- If a task needs to change a linked config file, first replace the link with a private copied file in the task worktree, then edit that private copy.
 
 ### 4a. Check if worktree already exists
 
@@ -161,13 +165,6 @@ Rules:
 
 Run from trunk worktree root (the current directory — sync direction is **current → other**):
 
-```bash
-bash scripts/sync_worktree_config.sh
-bash scripts/sync_worktree_config.sh --apply
-```
-
-Windows fallback (when `bash` is unavailable):
-
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/sync_worktree_config.ps1
 powershell -ExecutionPolicy Bypass -File scripts/sync_worktree_config.ps1 -Apply
@@ -175,8 +172,11 @@ powershell -ExecutionPolicy Bypass -File scripts/sync_worktree_config.ps1 -Apply
 
 Rules:
 - Dry-run is mandatory before apply. Never skip dry-run.
-- If both `.sh` and `.ps1` paths fail, stop immediately. Do not continue.
+- If the PowerShell sync script fails, stop immediately. Do not continue.
 - If `apply_sync=false`, skip apply and report explicitly.
+- Treat env-style local config as shared runtime artifacts: apply mode should create links, not duplicate copies.
+- If the user already said this task needs a custom `.env` or `frontend/.env.local`, do not leave it linked after setup; materialize a private copy in the task worktree before editing.
+- If the task worktree should reuse a shared `frontend/node_modules`, run `powershell -ExecutionPolicy Bypass -File scripts/sync_frontend_node_modules.ps1 -Mode Link` after worktree creation.
 
 ### 4d. Post-check (mandatory)
 
@@ -184,13 +184,14 @@ Verify the following exist in the task worktree (`../wt-<task_id>`):
 - `.agents/` directory (report file count)
 - `.claude/rules/` directory (report file count)
 - `.claude/skills/` directory (report file count)
-- `.env` file (verify content hash matches trunk)
-- `frontend/.env.local` file (verify content hash matches trunk)
+- `.env` file (verify it is linked to trunk/local or, if intentionally customized, document that it was materialized as a private copy)
+- `frontend/.env.local` file (verify it is linked to trunk/local or, if intentionally customized, document that it was materialized as a private copy)
+- `frontend/node_modules` state (document `linked` / `private` / `missing` using `scripts/sync_frontend_node_modules.ps1 -Mode Status`)
 
 **Output summary (required):**
 - Created branch: `feat/<task_id>-<slug>`
 - Created worktree path: `../wt-<task_id>`
-- Sync method: `bash` or `powershell`
+- Sync method: `powershell`
 - Sync dry-run result
 - Sync apply result (or `skipped`)
 - Post-check result: each item ✅ or ❌ with detail

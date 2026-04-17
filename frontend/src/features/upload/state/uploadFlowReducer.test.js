@@ -36,6 +36,43 @@ describe("uploadFlowReducer", () => {
     expect(next.files).toHaveLength(1);
   });
 
+  it("invalidates existing batch state when files are added after batch creation", () => {
+    const state = {
+      ...initialUploadState,
+      phase: "review_ready",
+      files: [
+        { id: "1", name: "a.pdf", size: 2, category: "bar", file: new File(["a"], "a.pdf", { type: "application/pdf" }) },
+      ],
+      reviewRows: [{ row_id: "bar:a.pdf:0", category: "bar", filename: "a.pdf", result: {}, score: {}, skip_reason: "page_count=6 > max_pages=4" }],
+      reviewRowsLoading: true,
+      batch: { batch_id: "b1", status: "review_ready" },
+      mergeTask: { task_id: "t1", task_type: "merge_batch" },
+      reviewSubmitted: true,
+      reportTypeErrorConsumed: true,
+      mergeRequested: true,
+      lastMergeTaskId: "t1",
+      systemError: "stale error",
+    };
+
+    const next = uploadFlowReducer(state, {
+      type: "ADD_FILES",
+      entries: [{ id: "2", name: "b.pdf", size: 2, category: "bar", file: new File(["b"], "b.pdf", { type: "application/pdf" }) }],
+      rejectedMessage: "",
+    });
+
+    expect(next.files).toHaveLength(2);
+    expect(next.phase).toBe("ready");
+    expect(next.batch).toBeNull();
+    expect(next.mergeTask).toBeNull();
+    expect(next.reviewRows).toEqual([]);
+    expect(next.reviewRowsLoading).toBe(false);
+    expect(next.reviewSubmitted).toBe(false);
+    expect(next.reportTypeErrorConsumed).toBe(false);
+    expect(next.mergeRequested).toBe(false);
+    expect(next.lastMergeTaskId).toBeNull();
+    expect(next.systemError).toBe("");
+  });
+
   it("removes matching review rows when queue file is removed", () => {
     const state = {
       ...initialUploadState,
@@ -53,6 +90,41 @@ describe("uploadFlowReducer", () => {
     expect(next.files).toHaveLength(0);
     expect(next.reviewRows).toHaveLength(1);
     expect(next.reviewRows[0].filename).toBe("b.pdf");
+  });
+
+  it("invalidates existing batch state when files are removed after batch creation", () => {
+    const state = {
+      ...initialUploadState,
+      phase: "review_ready",
+      files: [
+        { id: "f1", name: "a.pdf", size: 2, category: "bar", file: new File(["a"], "a.pdf", { type: "application/pdf" }) },
+      ],
+      reviewRows: [
+        { row_id: "bar:a.pdf:0", category: "bar", filename: "01_a.pdf", result: {}, score: {}, skip_reason: "page_count=6 > max_pages=4" },
+      ],
+      reviewRowsLoading: true,
+      batch: { batch_id: "b1", status: "review_ready" },
+      mergeTask: { task_id: "t1", task_type: "merge_batch" },
+      reviewSubmitted: true,
+      reportTypeErrorConsumed: true,
+      mergeRequested: true,
+      lastMergeTaskId: "t1",
+      systemError: "stale error",
+    };
+
+    const next = uploadFlowReducer(state, { type: "REMOVE_FILE", id: "f1", name: "a.pdf" });
+
+    expect(next.files).toHaveLength(0);
+    expect(next.phase).toBe("idle");
+    expect(next.batch).toBeNull();
+    expect(next.mergeTask).toBeNull();
+    expect(next.reviewRows).toEqual([]);
+    expect(next.reviewRowsLoading).toBe(false);
+    expect(next.reviewSubmitted).toBe(false);
+    expect(next.reportTypeErrorConsumed).toBe(false);
+    expect(next.mergeRequested).toBe(false);
+    expect(next.lastMergeTaskId).toBeNull();
+    expect(next.systemError).toBe("");
   });
 
   it("normalizes daily fallback category", () => {
