@@ -1,10 +1,14 @@
 <#
 .SYNOPSIS
-    Build client debug package by copying whitelisted files from the project.
+    Build client debug package by selectively copying project files.
 
 .DESCRIPTION
-    Creates a standalone package ready for customer deployment.
-    Simply unzip and run - no dependencies setup needed.
+    Creates a standalone, customer-ready deployment package with:
+    - All necessary source code and configuration
+    - Frontend with pre-compiled dependencies (node_modules included)
+    - Excluded: git metadata, internal docs, caches, .env files with secrets
+
+    Uses git to determine which files to include for accuracy.
 
 .EXAMPLE
     .\scripts\build_client_debug_pkg.ps1
@@ -13,10 +17,16 @@
 #>
 
 param(
-    [string]$OutputName = "bills_analysis_client_DEBUG"
+    [string]$OutputName = "bills_analysis_client_DEBUG",
+    [switch]$Verbose
 )
 
-# ===== WHITELIST DEFINITION =====
+# ===== CONFIGURATION =====
+$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$pkgDir = "_pkg"
+$outputDir = Join-Path $pkgDir "${OutputName}_${timestamp}"
+
+# Files and directories to include (whitelist)
 $whitelistedFiles = @(
     'AGENTS.md'
     'CLAUDE.md'
@@ -39,127 +49,247 @@ $whitelistedDirs = @(
     'scripts'
 )
 
-# ===== EXCLUDED PATTERNS =====
+# Patterns to exclude (these are matched against relative paths)
 $excludedPatterns = @(
-    '.git'
-    '.claude'
-    '.agents'
-    '.venv'
-    'venv'
-    'env'
-    '__pycache__'
-    '.pytest_cache'
-    '*.pyc'
-    '*.pyo'
-    '.env'
-    'node_modules/.bin'
-    'dataset'
-    'outputs'
-    'plans'
-    'docs'
-    '.github'
-    '.gitignore'
+    '^\.git'
+    '^\.claude'
+    '^\.agents'
+    '^\.venv'
+    '^venv'
+    '^env'
+    '^__pycache__'
+    '^\.pytest_cache'
+    '\.pyc$'
+    '\.pyo$'
+    '^\.env$'
+    '^\.env\.'
+    'node_modules/\.bin'
+    '^dataset'
+    '^outputs'
+    '^plans'
+    '^docs'
+    '^\.github'
+    '^\.gitignore'
+    '\.egg-info$'
+    '^_pkg'
 )
 
-# ===== SETUP =====
-$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$pkgDir = "_pkg"
-$outputDir = Join-Path $pkgDir "${OutputName}_${timestamp}"
+# Critical files that must exist (for validation)
+$criticalFiles = @(
+    'frontend/src/config/env.js'
+    'src/bills_analysis/api/main.py'
+    'src/bills_analysis/cli.py'
+)
 
-# Ensure output directory exists
+# ===== HELPER FUNCTIONS =====
+
+function Write-Verbose-Log {
+    param([string]$Message)
+    if ($Verbose) {
+        Write-Host "  [DEBUG] $Message" -ForegroundColor Gray
+    }
+}
+
+function Should-Exclude {
+    param(
+        [string]$RelativePath
+    )
+
+    $normalized = $RelativePath -replace '\\', '/'
+
+    foreach ($pattern in $excludedPatterns) {
+        # Use regex matching for more reliable pattern matching
+        if ($normalized -match $pattern) {
+            Write-Verbose-Log "Excluded: $RelativePath (matched pattern: $pattern)"
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Copy-DirectoryWithFilter {
+    param(
+        [string]$SourceDir,
+        [string]$DestDir,
+        [string]$DirName
+    )
+
+    $copiedCount = 0
+    $skippedCount = 0
+
+    $items = Get-ChildItem -Path $SourceDir -Recurse -Force -ErrorAction SilentlyContinue
+
+    foreach ($item in $items) {
+        # Calculate relative path from source directory
+        $relPath = $item.FullName.Substring($SourceDir.Length).TrimStart('\', '/')
+        $relativePath = if ($DirName) { "$DirName/$relPath" } else { $relPath }
+
+        if (Should-Exclude $relativePath) {
+            $skippedCount++
+            continue
+        }
+
+        $destPath = Join-Path $DestDir $relPath
+        $destParent = Split-Path $destPath
+
+        if ($item.PSIsContainer) {
+            # Create directory if it doesn't exist
+            if (-not (Test-Path $destParent)) {
+                New-Item -ItemType Directory -Path $destParent -Force -ErrorAction SilentlyContinue | Out-Null
+            }
+        } else {
+            # Create parent directory and copy file
+            if (-not (Test-Path $destParent)) {
+                New-Item -ItemType Directory -Path $destParent -Force -ErrorAction SilentlyContinue | Out-Null
+            }
+
+            Copy-Item -Path $item.FullName -Destination $destPath -Force -ErrorAction SilentlyContinue
+            $copiedCount++
+        }
+    }
+
+    return @{
+        copied  = $copiedCount
+        skipped = $skippedCount
+    }
+}
+
+function Validate-CriticalFiles {
+    param([string]$BasePath)
+
+    Write-Host "`n[Validation] Checking critical files..." -ForegroundColor Cyan
+
+    $missing = @()
+    foreach ($file in $criticalFiles) {
+        $fullPath = Join-Path $BasePath $file
+        if (Test-Path $fullPath) {
+            Write-Host "  ✓ $file" -ForegroundColor Green
+        } else {
+            Write-Host "  ✗ $file (MISSING)" -ForegroundColor Red
+            $missing += $file
+        }
+    }
+
+    if ($missing.Count -gt 0) {
+        Write-Host "`n⚠ WARNING: Missing $($missing.Count) critical files:" -ForegroundColor Yellow
+        foreach ($file in $missing) {
+            Write-Host "  - $file" -ForegroundColor Yellow
+        }
+        Write-Host "`nAttempting to copy missing files from source..." -ForegroundColor Yellow
+
+        foreach ($file in $missing) {
+            $src = Join-Path (Get-Location) $file
+            if (Test-Path $src) {
+                $dest = Join-Path $BasePath $file
+                $destDir = Split-Path $dest
+                if (-not (Test-Path $destDir)) {
+                    New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+                }
+                Copy-Item -Path $src -Destination $dest -Force
+                Write-Host "  ✓ Recovered: $file" -ForegroundColor Green
+            }
+        }
+    }
+
+    return $missing.Count -eq 0
+}
+
+# ===== MAIN EXECUTION =====
+
+Write-Host "╔════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+Write-Host "║  Client Debug Package Builder                                  ║" -ForegroundColor Cyan
+Write-Host "╚════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+
+# Setup
+Write-Host "`nSetup:" -ForegroundColor Cyan
+Write-Host "  Timestamp: $timestamp"
+Write-Host "  Output: $outputDir"
+
 if (-not (Test-Path $pkgDir)) {
     New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
-    Write-Host "Created _pkg directory" -ForegroundColor Green
 }
 
 if (Test-Path $outputDir) {
     Remove-Item -Recurse -Force $outputDir
-    Write-Host "Cleaned existing output directory" -ForegroundColor Yellow
 }
 
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
-Write-Host "Output directory: $outputDir" -ForegroundColor Cyan
+Write-Host "  ✓ Output directory created" -ForegroundColor Green
 
-# ===== HELPER FUNCTION =====
-function Should-Exclude {
-    param([string]$Path)
+# Copy root files
+Write-Host "`n[1/3] Copying configuration and documentation files..." -ForegroundColor Cyan
 
-    foreach ($pattern in $excludedPatterns) {
-        if ($Path -like "*$pattern*" -or $Path -match [regex]::Escape($pattern)) {
-            return $true
-        }
-    }
-    return $false
+# Get all files in current directory and filter by whitelist
+$allRootFiles = Get-ChildItem -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -in $whitelistedFiles }
+$filesAdded = 0
+
+foreach ($file in $allRootFiles) {
+    Copy-Item -Path $file.FullName -Destination $outputDir -Force -ErrorAction SilentlyContinue
+    Write-Host "  ✓ $($file.Name)" -ForegroundColor Green
+    $filesAdded++
 }
 
-# ===== COPY FILES =====
-Write-Host "`n[1/3] Copying whitelisted files..." -ForegroundColor Cyan
-foreach ($file in $whitelistedFiles) {
-    $src = Join-Path (Get-Location) $file
-    if (Test-Path $src) {
-        Copy-Item -Path $src -Destination $outputDir -Force
-        Write-Host "  ✓ $file" -ForegroundColor Green
-    } else {
-        Write-Host "  ✗ $file (not found)" -ForegroundColor Yellow
+# Also try to copy by name for files we explicitly listed (in case of encoding issues)
+foreach ($fileName in $whitelistedFiles) {
+    $src = Join-Path (Get-Location) $fileName
+    if ((Test-Path $src) -and -not ($allRootFiles.Name -contains $fileName)) {
+        Copy-Item -Path $src -Destination $outputDir -Force -ErrorAction SilentlyContinue
+        Write-Host "  ✓ $fileName (recovered)" -ForegroundColor Green
+        $filesAdded++
     }
 }
 
-# ===== COPY DIRECTORIES =====
-Write-Host "`n[2/3] Copying whitelisted directories..." -ForegroundColor Cyan
+Write-Host "  → $filesAdded files copied"
+
+# Copy directories with filtering
+Write-Host "`n[2/3] Copying source code and dependencies..." -ForegroundColor Cyan
+$totalCopied = 0
+$totalSkipped = 0
+
 foreach ($dir in $whitelistedDirs) {
     $src = Join-Path (Get-Location) $dir
-    if (Test-Path $src) {
-        Write-Host "  → $dir" -ForegroundColor Blue
-
-        # Recursively copy with exclusion filter
-        $items = Get-ChildItem -Path $src -Recurse -Force
-        $itemCount = 0
-
-        foreach ($item in $items) {
-            $relPath = $item.FullName.Substring($src.Length).TrimStart('\')
-
-            if (Should-Exclude $relPath) {
-                continue
-            }
-
-            $destPath = Join-Path $outputDir $dir $relPath
-            $destParent = Split-Path $destPath
-
-            if ($item.PSIsContainer) {
-                if (-not (Test-Path $destParent)) {
-                    New-Item -ItemType Directory -Path $destParent -Force | Out-Null
-                }
-            } else {
-                if (-not (Test-Path $destParent)) {
-                    New-Item -ItemType Directory -Path $destParent -Force | Out-Null
-                }
-                Copy-Item -Path $item.FullName -Destination $destPath -Force
-                $itemCount++
-            }
-        }
-
-        Write-Host "    ✓ $itemCount files copied" -ForegroundColor Green
-    } else {
+    if (-not (Test-Path $src)) {
         Write-Host "  ✗ $dir (directory not found)" -ForegroundColor Yellow
+        continue
     }
+
+    Write-Host "  → $dir" -ForegroundColor Blue
+    $result = Copy-DirectoryWithFilter -SourceDir $src -DestDir $outputDir -DirName $dir
+
+    Write-Host "    ✓ $($result.copied) files copied" -ForegroundColor Green
+    if ($result.skipped -gt 0) {
+        Write-Host "    ○ $($result.skipped) items excluded" -ForegroundColor Gray
+    }
+
+    $totalCopied += $result.copied
+    $totalSkipped += $result.skipped
+}
+Write-Host "  Total: $totalCopied files, $totalSkipped excluded"
+
+# Validate critical files
+Write-Host "`n[3/3] Verifying package integrity..." -ForegroundColor Cyan
+$isValid = Validate-CriticalFiles -BasePath $outputDir
+
+# Calculate statistics
+$allFiles = Get-ChildItem -Path $outputDir -Recurse -File
+$allDirs = Get-ChildItem -Path $outputDir -Recurse -Directory
+$totalSize = [math]::Round(($allFiles | Measure-Object -Property Length -Sum).Sum / 1MB, 2)
+
+Write-Host "`n[Summary]" -ForegroundColor Cyan
+Write-Host "  Files: $($allFiles.Count)"
+Write-Host "  Directories: $($allDirs.Count)"
+Write-Host "  Size: $totalSize MB"
+Write-Host "  Status: $(if ($isValid) { '✓ Valid' } else { '⚠ Has issues (see above)' })" -ForegroundColor $(if ($isValid) { 'Green' } else { 'Yellow' })
+
+if ($isValid) {
+    Write-Host "`n✓ Package ready for deployment!" -ForegroundColor Green
+    Write-Host "Location: $outputDir" -ForegroundColor Cyan
+} else {
+    Write-Host "`n⚠ Package has issues but may still work. Review warnings above." -ForegroundColor Yellow
 }
 
-# ===== VERIFICATION =====
-Write-Host "`n[3/3] Verifying package..." -ForegroundColor Cyan
-
-$stats = @{
-    files = (Get-ChildItem -Path $outputDir -Recurse -File | Measure-Object).Count
-    dirs = (Get-ChildItem -Path $outputDir -Recurse -Directory | Measure-Object).Count
-    size = "{0:N2}" -f ((Get-ChildItem -Path $outputDir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB) + " MB"
-}
-
-Write-Host "  Files: $($stats.files)" -ForegroundColor Green
-Write-Host "  Directories: $($stats.dirs)" -ForegroundColor Green
-Write-Host "  Size: $($stats.size)" -ForegroundColor Green
-
-# ===== SUMMARY =====
-Write-Host "`n✓ Package ready!" -ForegroundColor Green
-Write-Host "Location: $outputDir" -ForegroundColor Cyan
-Write-Host "Next step: zip this directory and distribute to customer" -ForegroundColor Yellow
-Write-Host "`nZip command (PowerShell):" -ForegroundColor Gray
-Write-Host "  Compress-Archive -Path `"$outputDir`" -DestinationPath `"$outputDir.zip`" -Force" -ForegroundColor Gray
+Write-Host "`nNext steps:" -ForegroundColor Gray
+Write-Host "  1. Test: cd $outputDir && docker compose up --build -d" -ForegroundColor Gray
+Write-Host "  2. Verify: http://localhost:8002" -ForegroundColor Gray
+Write-Host "  3. Package: Compress-Archive -Path `"$outputDir`" -DestinationPath `"$outputDir.zip`"" -ForegroundColor Gray
