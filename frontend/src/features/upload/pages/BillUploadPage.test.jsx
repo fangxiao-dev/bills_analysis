@@ -50,6 +50,31 @@ function buildBaseContext() {
             receiver_name: "Ramen Ippin Dortmund GmbH",
             receiver_address: "Reinoldistr.8 44135 Dortmund",
           },
+          {
+            city: "Kaiserslautern",
+            receiver_name: "Ramen Ippin Kaiserslautern GmbH",
+            receiver_address: "Reinoldistr.8 44135 Dortmund",
+          },
+          {
+            city: "Mainz",
+            receiver_name: "Ramen Ippin Göttingen GmbH",
+            receiver_address: "Reinoldistr.8 44135 Dortmund",
+          },
+          {
+            city: "Kassel",
+            receiver_name: "IP Kassel GmbH",
+            receiver_address: "Reinoldistr.8 44135 Dortmund",
+          },
+          {
+            city: "Europa",
+            receiver_name: "Ramen Ippin Europa GmbH",
+            receiver_address: "Reinoldistr.8 44135 Dortmund",
+          },
+          {
+            city: "Düsseldorf",
+            receiver_name: "Fujigawa Food GmbH",
+            receiver_address: "Dreischeibenhaus 1 40211 Düsseldorf",
+          },
         ],
       })),
       setOfficeReceiverCity: vi.fn(),
@@ -130,6 +155,11 @@ describe("BillUploadPage status messaging", () => {
             receiver_name: "Ramen Ippin Dortmund GmbH",
             receiver_address: "Reinoldistr.8 44135 Dortmund",
           },
+          {
+            city: "Düsseldorf",
+            receiver_name: "Fujigawa Food GmbH",
+            receiver_address: "Dreischeibenhaus 1 40211 Düsseldorf",
+          },
         ],
         officeReceiverCity: "Dortmund",
       },
@@ -138,5 +168,6 @@ describe("BillUploadPage status messaging", () => {
     expect(screen.getByLabelText("City")).toBeInTheDocument();
     expect(screen.getByLabelText("Receiver Name")).toHaveValue("Ramen Ippin Dortmund GmbH");
     expect(screen.getByLabelText("Receiver Address")).toHaveValue("Reinoldistr.8 44135 Dortmund");
+    expect(screen.getByRole("option", { name: "Düsseldorf" })).toBeInTheDocument();
   });
 });
