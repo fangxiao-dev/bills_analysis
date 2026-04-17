@@ -347,13 +347,13 @@ export function ManualReviewPage() {
               <p className="mt-1 text-sm text-ledger-smoke">{t("upload.runDateHint")}</p>
             </header>
             <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(280px,320px)] md:items-start">
-              <div className="min-w-0 pt-1">
+              <div className="ledger-card border border-ledger-line bg-white p-3 shadow-none">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <p className="text-xs font-semibold uppercase tracking-[0.1em] text-ledger-ink">{t("review.batchId")}</p>
-                  <p className="min-w-0 truncate text-lg font-semibold text-ledger-ink">{state.batch?.batch_id || "--"}</p>
+                  <p className="min-w-0 truncate text-xs font-semibold text-ledger-ink">{state.batch?.batch_id || "--"}</p>
                 </div>
               </div>
-              <div className="max-w-sm md:justify-self-end">
+              <div className="ledger-card border border-ledger-line bg-white p-3 shadow-none md:justify-self-end">
                 <RunDatePicker value={state.runDate} onChange={actions.setRunDate} />
               </div>
             </div>

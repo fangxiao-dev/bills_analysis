@@ -537,6 +537,15 @@ describe("ManualReviewPage", () => {
     expect(screen.queryByLabelText("ZBON Review Items-run_date-zbon:invoice-2")).not.toBeInTheDocument();
   });
 
+  it("renders batch id inline in the compact batch info frame", () => {
+    renderPage();
+
+    expect(screen.getByRole("heading", { name: "Batch info" })).toBeInTheDocument();
+    const batchIdValue = screen.getByText("b1");
+    expect(batchIdValue.className).toContain("text-xs");
+    expect(batchIdValue.className).not.toContain("text-lg");
+  });
+
   it("submits daily rows with the shared review page run date", async () => {
     const base = buildBaseContext();
     const actions = {
