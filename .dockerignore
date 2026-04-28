@@ -19,6 +19,7 @@ outputs/
 # Secrets — never bake into image
 .env
 .env.docker
+frontend/.env.local
 
 # Lock files not needed in image
 uv.lock

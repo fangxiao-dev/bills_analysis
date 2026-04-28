@@ -21,3 +21,4 @@
 | TC-106 | office receiver城市化：Upload选择城市，按配置自动匹配地址并参与receiver校验（地址只读、可扩展mapping） | DONE | 20260222-TC-106 | 2026-02-23T21:27:49+01:00 | manual test completed; receiver city mapping flow validated |
 | TC-107 | Web UI自动化测试基线：新增Playwright E2E覆盖upload→review→merge主链路，MCP仅用于探索式手工测试，不纳入CI门禁 | PLANNED | 20260223-TC-107 | 2026-02-23T21:18:21+01:00 | Phase-1: smoke可运行；非强制门禁 |
 | TC-108 | 抽离可复用的 agent workflow、skills、指令模板与 bootstrap 机制到独立 agent-assets repo，支持 Codex / Claude / Gemini 多 agent 接入 | PLANNED | 20260314-TC-108 | 2026-03-14T10:03:35+01:00 | standalone agent-assets bootstrap repo |
+| TC-109 | Statistics 页面优化：Details 默认展示全部明细，支出分类与明细合并为主从模块，并压缩桌面/移动端布局 | PLANNED | 20260428-TC-109 | 2026-04-28T21:20:00+02:00 | Executor must report completion readiness only; user decides DONE transition |
