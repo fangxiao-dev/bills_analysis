@@ -5,6 +5,7 @@ import { LANGUAGE_KEY } from "../i18n";
 const navItems = [
   { labelKey: "app.nav.upload", to: "/" },
   { labelKey: "app.nav.review", to: "/manual-review" },
+  { labelKey: "app.nav.statistics", to: "/statistics" },
 ];
 
 /**
