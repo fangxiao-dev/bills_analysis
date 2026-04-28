@@ -170,7 +170,7 @@ export function ManualReviewPage() {
     setLocalError("");
     setSubmitFeedback("");
 
-    if (!showTaxIdWarn && hasInvalidTaxId(draft, effectiveBatchType)) {
+    if (!showTaxIdWarn && effectiveBatchType === "office" && hasInvalidTaxId(draft, effectiveBatchType)) {
       setShowTaxIdWarn(true);
       return;
     }
@@ -748,7 +748,7 @@ function isValidHttpUrl(value) {
 
 /**
  * Return true when the relevant rows for the given batch type have an invalid/missing tax_id.
- * For office: checks office rows. For daily: checks invoice-type bar rows (receipt rows carry "Beleg").
+ * Currently this warning is only used for office batches.
  * @param {{ bar: Array<{ tax_id?: string }>; office: Array<{ tax_id?: string }> }} draft
  * @param {string} batchType
  */

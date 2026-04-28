@@ -399,6 +399,48 @@ describe("ManualReviewPage", () => {
     });
   });
 
+  it("does not block daily submit on missing bar tax id", async () => {
+    const actions = {
+      submitReviewOnly: vi.fn(async () => true),
+      queueMergeOnly: vi.fn(async () => true),
+      fetchReviewRows: vi.fn(async () => []),
+      resolveMonthlyPathFromLocal: vi.fn(async () => "D:\\merge\\monthly.xlsx"),
+      retryMerge: vi.fn(async () => true),
+      reportTypeError: vi.fn(async () => ({ status: "skipped", corrections: [] })),
+    };
+
+    renderPage({
+      actions,
+      state: {
+        ...buildBaseContext().state,
+        batch: {
+          ...buildBaseContext().state.batch,
+          type: "daily",
+        },
+        reviewRows: [
+          {
+            row_id: "bar:invoice-1",
+            category: "bar",
+            filename: "invoice-1.pdf",
+            result: {
+              store_name: "Store A",
+              brutto: "10.00",
+              netto: "8.40",
+              tax_id: "-",
+            },
+            score: {},
+          },
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => {
+      expect(actions.submitReviewOnly).toHaveBeenCalled();
+    });
+    expect(screen.queryByText("Some office rows have no valid tax ID (blank or \"-\"). Submit anyway?")).not.toBeInTheDocument();
+  });
+
   it("shows repeat submit hint after submit succeeds", async () => {
     renderPage({
       state: {
