@@ -204,11 +204,6 @@ export function StatisticsPage() {
                 />
                 <small>{officeFile ? officeFile.name : t("statistics.noFile")}</small>
               </label>
-              <div className="statistics-action-cell">
-                <Button type="button" onClick={() => void handleGenerate()} disabled={!canGenerate} data-testid="generate-button">
-                  {loading ? t("statistics.generating") : t("statistics.generate")}
-                </Button>
-              </div>
             </div>
             <div className="statistics-manual-expenses">
               {manualRows.map((row, index) => (
@@ -274,6 +269,11 @@ export function StatisticsPage() {
                 <AlertBanner tone="error" message={error} />
               </div>
             ) : null}
+            <div className="statistics-card-footer">
+              <Button type="button" onClick={() => void handleGenerate()} disabled={!canGenerate} data-testid="generate-button">
+                {loading ? t("statistics.generating") : t("statistics.generate")}
+              </Button>
+            </div>
           </section>
         </section>
 

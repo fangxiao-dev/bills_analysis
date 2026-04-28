@@ -546,6 +546,14 @@ button {
   align-items: center;
 }
 
+.statistics-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--ledger-line);
+}
+
 .statistics-manual-expenses {
   display: grid;
   gap: 0.5rem;
