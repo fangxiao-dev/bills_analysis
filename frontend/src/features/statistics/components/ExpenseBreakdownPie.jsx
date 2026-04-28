@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 const COLORS = ["#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#4d7c0f"];
 
@@ -6,22 +6,16 @@ const currency = new Intl.NumberFormat("de-DE", { style: "currency", currency: "
 
 /**
  * Expense structure chart with Bar Ausgabe and Office type drilldown.
- * @param {{ breakdown: Array; dailyRows: Array; officeRows: Array; labels?: Record<string, string> }} props
+ * @param {{ breakdown: Array; selectedCategory?: string; onSelectCategory?: (category: string) => void; labels?: Record<string, string> }} props
  */
-export function ExpenseBreakdownPie({ breakdown = [], dailyRows = [], officeRows = [], labels = {} }) {
+export function ExpenseBreakdownPie({ breakdown = [], selectedCategory = "", onSelectCategory, labels = {} }) {
   const items = breakdown.filter((item) => Number(item.brutto) !== 0);
-  const [selectedCategory, setSelectedCategory] = useState(items[0]?.category || "");
   const selected = items.find((item) => item.category === selectedCategory) || items[0] || null;
   const slices = useMemo(() => buildSlices(items), [items]);
 
   if (!items.length) {
     return <p className="statistics-empty">No expenses found.</p>;
   }
-
-  const drilldownRows =
-    selected?.source === "daily_bar"
-      ? dailyRows.map((row) => ({ date: row.date, name: "Bar Ausgabe", brutto: row.brutto }))
-      : officeRows.filter((row) => row.type === selected?.category);
 
   return (
     <div className="statistics-expense-breakdown">
@@ -37,7 +31,7 @@ export function ExpenseBreakdownPie({ breakdown = [], dailyRows = [], officeRows
             stroke={slice.color}
             strokeDasharray={`${slice.length} ${slice.gap}`}
             strokeDashoffset={slice.offset}
-            onClick={() => setSelectedCategory(slice.category)}
+            onClick={() => onSelectCategory?.(slice.category)}
           />
         ))}
         <text x="90" y="85" textAnchor="middle" className="statistics-pie-kicker">
@@ -54,7 +48,7 @@ export function ExpenseBreakdownPie({ breakdown = [], dailyRows = [], officeRows
             key={`${item.source}-${item.category}`}
             type="button"
             className={`statistics-expense-item ${selected?.category === item.category ? "selected" : ""}`}
-            onClick={() => setSelectedCategory(item.category)}
+            onClick={() => onSelectCategory?.(item.category)}
           >
             <span className="statistics-expense-swatch" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
             <span className="statistics-expense-name">{item.category}</span>
@@ -62,27 +56,6 @@ export function ExpenseBreakdownPie({ breakdown = [], dailyRows = [], officeRows
             <span className="statistics-expense-amount">{currency.format(item.brutto || 0)}</span>
           </button>
         ))}
-      </div>
-
-      <div className="statistics-table-stack" data-testid="expense-drilldown">
-        <table className="statistics-table detail">
-          <thead>
-            <tr>
-              <th>{labels.date || "Date"}</th>
-              <th>{labels.name || "Name"}</th>
-              <th className="text-right">Brutto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {drilldownRows.map((row, index) => (
-              <tr key={`${selected?.category}-${row.date || "none"}-${row.name || index}-${index}`}>
-                <td>{row.date || "-"}</td>
-                <td>{row.name || selected?.category || "-"}</td>
-                <td className="text-right">{currency.format(row.brutto || 0)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </div>
   );

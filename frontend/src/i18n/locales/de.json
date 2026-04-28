@@ -89,6 +89,7 @@
   "statistics.spend": "Ausgaben",
   "statistics.date": "Datum",
   "statistics.name": "Name",
+  "statistics.details": "Details",
   "statistics.warnings": "Warnungen",
   "review.title": "Manuelle Prüfung",
   "review.subtitle": "Extrahierte Felder je Kategorie bearbeiten und in einem Schritt absenden.",

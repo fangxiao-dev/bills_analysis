@@ -33,7 +33,10 @@ function statisticsPayload(overrides = {}) {
       office_expense_brutto: 200,
       profit_brutto: 700,
     },
-    daily_series: [{ date: "2025-11-01", revenue_brutto: 1000, daily_expense_brutto: 100 }],
+    daily_series: [
+      { date: "2025-11-01", revenue_brutto: 1000, daily_expense_brutto: 100 },
+      { date: "2025-11-02", revenue_brutto: 700, daily_expense_brutto: 40 },
+    ],
     office_by_type: [{ type: "Miete", brutto: 200, count: 1, share: 1 }],
     office_rows: [{ date: "2025-11-02", type: "Miete", name: "Rent invoice", brutto: 200 }],
     expense_breakdown: [
@@ -117,6 +120,33 @@ describe("StatisticsPage", () => {
     expect(firstRow).toHaveTextContent("Expense Breakdown");
     expect(firstRow).not.toHaveTextContent("Daily Trend");
     expect(screen.getByTestId("statistics-daily-trend-row")).toHaveTextContent("Daily Trend");
+  });
+
+  it("renders expense detail as a separate section below daily trend", async () => {
+    mockPreviewMonthlyStatistics.mockResolvedValue(statisticsPayload());
+    renderPage();
+
+    fireEvent.change(screen.getByTestId("file-input-daily"), { target: { files: [excelFile("daily.xlsx")] } });
+    fireEvent.change(screen.getByTestId("file-input-office"), { target: { files: [excelFile("office.xlsx")] } });
+    fireEvent.click(screen.getByTestId("generate-button"));
+
+    await waitFor(() => expect(screen.getByTestId("statistics-first-row")).toBeInTheDocument());
+    expect(screen.getByTestId("statistics-first-row")).not.toContainElement(screen.getByTestId("expense-drilldown"));
+    expect(screen.getByTestId("statistics-expense-detail-row")).toContainElement(screen.getByTestId("expense-drilldown"));
+  });
+
+  it("shows daily trend values on point hover", async () => {
+    mockPreviewMonthlyStatistics.mockResolvedValue(statisticsPayload());
+    renderPage();
+
+    fireEvent.change(screen.getByTestId("file-input-daily"), { target: { files: [excelFile("daily.xlsx")] } });
+    fireEvent.change(screen.getByTestId("file-input-office"), { target: { files: [excelFile("office.xlsx")] } });
+    fireEvent.click(screen.getByTestId("generate-button"));
+
+    const point = await screen.findByTestId("daily-trend-point-revenue-0");
+    fireEvent.mouseEnter(point);
+    expect(screen.getByTestId("daily-trend-tooltip")).toHaveTextContent("2025-11-01");
+    expect(screen.getByTestId("daily-trend-tooltip")).toHaveTextContent("1.000,00");
   });
 
   it("displays warnings returned by the backend", async () => {

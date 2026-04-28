@@ -19,6 +19,7 @@ export function StatisticsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+  const [selectedExpenseCategory, setSelectedExpenseCategory] = useState("");
   const canGenerate = Boolean(dailyFile && officeFile) && !loading;
 
   async function handleGenerate() {
@@ -31,6 +32,7 @@ export function StatisticsPage() {
     try {
       const data = await previewMonthlyStatistics({ dailyExcel: dailyFile, officeExcel: officeFile });
       setResult(data);
+      setSelectedExpenseCategory(data.expense_breakdown?.[0]?.category || "");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("statistics.errorFallback"));
     } finally {
@@ -101,12 +103,10 @@ export function StatisticsPage() {
                 <h2 className="statistics-section-title">{t("statistics.expenseBreakdown")}</h2>
                 <ExpenseBreakdownPie
                   breakdown={result.expense_breakdown || []}
-                  dailyRows={result.daily_expense_rows || []}
-                  officeRows={result.office_rows || []}
+                  selectedCategory={selectedExpenseCategory}
+                  onSelectCategory={setSelectedExpenseCategory}
                   labels={{
                     spend: t("statistics.spend"),
-                    date: t("statistics.date"),
-                    name: t("statistics.name"),
                   }}
                 />
               </article>
@@ -115,6 +115,20 @@ export function StatisticsPage() {
             <section className="ledger-card section-enter p-4" data-testid="statistics-daily-trend-row">
               <h2 className="statistics-section-title">{t("statistics.dailyTrend")}</h2>
               <DailyTrendChart series={result.daily_series || []} />
+            </section>
+
+            <section className="ledger-card section-enter p-4" data-testid="statistics-expense-detail-row">
+              <h2 className="statistics-section-title">{t("statistics.details")}</h2>
+              <ExpenseDetailTable
+                selectedCategory={selectedExpenseCategory}
+                breakdown={result.expense_breakdown || []}
+                dailyRows={result.daily_expense_rows || []}
+                officeRows={result.office_rows || []}
+                labels={{
+                  date: t("statistics.date"),
+                  name: t("statistics.name"),
+                }}
+              />
             </section>
 
             {result.warnings?.length ? (
@@ -131,5 +145,38 @@ export function StatisticsPage() {
         ) : null}
       </div>
     </AppFrame>
+  );
+}
+
+const currency = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+
+function ExpenseDetailTable({ selectedCategory, breakdown = [], dailyRows = [], officeRows = [], labels = {} }) {
+  const selected = breakdown.find((item) => item.category === selectedCategory) || breakdown[0] || null;
+  const rows =
+    selected?.source === "daily_bar"
+      ? dailyRows.map((row) => ({ date: row.date, name: "Bar Ausgabe", brutto: row.brutto }))
+      : officeRows.filter((row) => row.type === selected?.category);
+
+  return (
+    <div className="statistics-table-stack" data-testid="expense-drilldown">
+      <table className="statistics-table detail">
+        <thead>
+          <tr>
+            <th>{labels.date || "Date"}</th>
+            <th>{labels.name || "Name"}</th>
+            <th className="text-right">Brutto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${selected?.category}-${row.date || "none"}-${row.name || index}-${index}`}>
+              <td>{row.date || "-"}</td>
+              <td>{row.name || selected?.category || "-"}</td>
+              <td className="text-right">{currency.format(row.brutto || 0)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

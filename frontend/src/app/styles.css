@@ -656,6 +656,31 @@ button {
   stroke-dasharray: 5 4;
 }
 
+.statistics-trend-point {
+  cursor: crosshair;
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.statistics-trend-point.income {
+  fill: #0f9f6e;
+}
+
+.statistics-trend-point.expense {
+  fill: #d0475f;
+}
+
+.statistics-trend-tooltip rect {
+  fill: #142033;
+  opacity: 0.94;
+}
+
+.statistics-trend-tooltip text {
+  fill: #ffffff;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
 .statistics-table-stack {
   display: grid;
   gap: 0.8rem;

@@ -88,6 +88,7 @@
   "statistics.spend": "支出",
   "statistics.date": "日期",
   "statistics.name": "名称",
+  "statistics.details": "明细",
   "statistics.warnings": "警告",
   "review.title": "人工审核",
   "review.subtitle": "按分类编辑提取结果，一次提交完成审核。",
