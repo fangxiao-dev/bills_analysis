@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import shutil
+import re
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,9 @@ from bills_analysis.excel_ops import (
     parse_datum,
     write_datum_cell,
 )
+
+_DAILY_EXPENSE_BRUTTO_RE = re.compile(r"^Ausgabe \d+ Brutto$")
+_DAILY_EXPENSE_NETTO_RE = re.compile(r"^Ausgabe \d+ Netto$")
 
 
 def _cell_has_value(value: Any) -> bool:
@@ -62,7 +67,46 @@ def _build_daily_template_headers(*, max_expense_rows: int = 5) -> list[str]:
                 f"Ausgabe {idx} Netto",
             ]
         )
+    headers.extend(["Ausgabe sum Brutto", "Ausgabe Sum Netto"])
     return headers
+
+
+def _to_decimal(value: Any) -> Decimal:
+    """Convert a worksheet value to Decimal for daily sum calculation."""
+
+    if value is None or value == "":
+        return Decimal("0")
+    try:
+        return Decimal(str(value).replace(",", "."))
+    except (InvalidOperation, ValueError):
+        return Decimal("0")
+
+
+def _decimal_to_cell_value(value: Decimal) -> int | float:
+    """Return an Excel-friendly numeric value for a Decimal total."""
+
+    normalized = value.quantize(Decimal("0.01"))
+    if normalized == normalized.to_integral_value():
+        return int(normalized)
+    return float(normalized)
+
+
+def _write_daily_expense_sums(ws: Any, target_row: int, header_to_col: dict[str, int]) -> None:
+    """Write Daily Ausgabe Brutto/Netto sum columns when those columns exist."""
+
+    sum_targets = [
+        ("Ausgabe sum Brutto", _DAILY_EXPENSE_BRUTTO_RE),
+        ("Ausgabe Sum Netto", _DAILY_EXPENSE_NETTO_RE),
+    ]
+    for target_header, source_pattern in sum_targets:
+        target_col = header_to_col.get(target_header)
+        if target_col is None:
+            continue
+        total = Decimal("0")
+        for header, col_idx in header_to_col.items():
+            if source_pattern.match(header):
+                total += _to_decimal(ws.cell(row=target_row, column=col_idx).value)
+        ws.cell(row=target_row, column=target_col, value=_decimal_to_cell_value(total))
 
 
 def _ensure_daily_monthly_template(monthly_xlsx: Path) -> None:
@@ -200,6 +244,7 @@ def merge_daily_excel(
 
     if "Datum" in header_to_col:
         write_datum_cell(ws.cell(row=target_row, column=header_to_col["Datum"]), datum)
+    _write_daily_expense_sums(ws, target_row, header_to_col)
     _sort_daily_rows_by_datum(ws)
     wb.save(out_path)
     return out_path

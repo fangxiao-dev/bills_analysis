@@ -126,11 +126,56 @@ def test_daily_merge_creates_missing_monthly_template() -> None:
     ws_monthly = wb_monthly.active
     headers = [cell.value for cell in ws_monthly[1]]
     assert headers[:4] == ["Datum", "Umsatz Brutto", "Umsatz Netto", "Wie viel Rechnungen"]
+    assert "Ausgabe sum Brutto" in headers
+    assert "Ausgabe Sum Netto" in headers
 
     rows = _sheet_rows_as_values(out_path)
     assert len(rows) == 1
     assert rows[0][1] == 120.0
     assert rows[0][2] == 100.0
+
+
+def test_daily_merge_writes_expense_sum_columns() -> None:
+    """Daily merge should write Brutto and Netto sum columns when present."""
+
+    root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    validated = root / "validated_daily.xlsx"
+    monthly = root / "monthly_daily.xlsx"
+
+    _new_book(
+        validated,
+        [
+            "Datum",
+            "Ausgabe 1 Brutto",
+            "Ausgabe 1 Netto",
+            "Ausgabe 2 Brutto",
+            "Ausgabe 2 Netto",
+            "need review",
+        ],
+        [["04/02/2026", 10.0, 8.0, 5.5, 4.5, False]],
+    )
+    _new_book(
+        monthly,
+        [
+            "Datum",
+            "Ausgabe 1 Brutto",
+            "Ausgabe 1 Netto",
+            "Ausgabe 2 Brutto",
+            "Ausgabe 2 Netto",
+            "Ausgabe sum Brutto",
+            "Ausgabe Sum Netto",
+        ],
+        [],
+    )
+
+    out_path = merge_daily(validated, monthly, out_dir=root)
+    wb = load_workbook(out_path)
+    ws = wb.active
+    headers = [cell.value for cell in ws[1]]
+    brutto_col = headers.index("Ausgabe sum Brutto") + 1
+    netto_col = headers.index("Ausgabe Sum Netto") + 1
+    assert ws.cell(row=2, column=brutto_col).value == 15.5
+    assert ws.cell(row=2, column=netto_col).value == 12.5
 
 
 def test_daily_merge_always_sorts_by_datum_ascending() -> None:
