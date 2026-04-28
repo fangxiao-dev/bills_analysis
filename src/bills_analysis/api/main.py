@@ -566,44 +566,36 @@ async def download_merge_output(batch_id: str) -> FileResponse:
     return FileResponse(path=output_path, media_type=media, filename=output_path.name)
 
 
-def _mount_frontend_static_files(application: FastAPI) -> None:
-    """Mount Vite build output as SPA static files in Docker environment.
-
-    No-op when FRONTEND_DIST_DIR is not set (local dev with Vite devserver).
-    html=True makes unmatched paths fall back to index.html, supporting
-    react-router-dom client-side routing (e.g. /upload, /review/<id>).
-    Must be called after all @app route registrations to avoid shadowing API routes.
-    """
-    import logging
-
-    from fastapi.staticfiles import StaticFiles
-
-    dist_dir_raw = os.getenv("FRONTEND_DIST_DIR", "").strip()
-    if not dist_dir_raw:
-        return
-    dist_path = Path(dist_dir_raw)
-    if not dist_path.is_dir():
-        logging.getLogger(__name__).warning(
-            "FRONTEND_DIST_DIR=%s does not exist, skipping static file mount.", dist_dir_raw
-        )
-        return
-    application.mount("/", StaticFiles(directory=str(dist_path), html=True), name="frontend")
-
-
 @app.get("/{path_name:path}", include_in_schema=False)
-async def spa_fallback(path_name: str) -> "FileResponse":
-    """Fallback route for SPA: serve index.html for unmatched client-side routes."""
+async def frontend_catch_all(path_name: str) -> "FileResponse":
+    """Serve frontend files or index.html for SPA routing.
+
+    For actual files in dist directory (assets, index.html), serve them directly.
+    For client-side routes (e.g. /statistics, /upload), serve index.html so React Router handles it.
+    """
     dist_dir = os.getenv("FRONTEND_DIST_DIR", "").strip()
     if not dist_dir:
         raise HTTPException(status_code=404, detail="Frontend not configured")
-    index_path = Path(dist_dir) / "index.html"
-    if not index_path.exists():
-        raise HTTPException(status_code=404, detail="Frontend index not found")
-    from fastapi.responses import FileResponse
-    return FileResponse(index_path)
 
+    dist_path = Path(dist_dir)
 
-_mount_frontend_static_files(app)
+    # Try to serve the requested file if it exists
+    requested_path = dist_path / path_name
+    if requested_path.exists() and requested_path.is_file():
+        return FileResponse(requested_path)
+
+    # If not a file, check if it's a directory with index.html
+    if requested_path.is_dir():
+        index_in_dir = requested_path / "index.html"
+        if index_in_dir.exists():
+            return FileResponse(index_in_dir)
+
+    # For everything else, fall back to index.html for SPA routing
+    index_path = dist_path / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+
+    raise HTTPException(status_code=404, detail="Frontend index not found")
 
 
 def run() -> None:
