@@ -26,3 +26,18 @@ export const statisticsClient = createStatisticsClient();
 export function previewMonthlyStatistics(payload) {
   return statisticsClient.previewMonthlyStatistics(payload);
 }
+
+/**
+ * Read manual Ausgabe type options using the default mode-selected client.
+ */
+export function getManualExpenseTypes() {
+  return statisticsClient.getManualExpenseTypes();
+}
+
+/**
+ * Persist one manual Ausgabe type option using the default mode-selected client.
+ * @param {string} type
+ */
+export function createManualExpenseType(type) {
+  return statisticsClient.createManualExpenseType(type);
+}

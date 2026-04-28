@@ -36,17 +36,25 @@ export function createMockStatisticsClient() {
           { type: "Miete", brutto: 28000, count: 2, share: 0.251 },
         ],
         office_rows: [
-          { date: "2025-11-05", type: "Personal", name: "Gehalt Nov", brutto: 15000 },
-          { date: "2025-11-10", type: "Miete", name: "Ramen KL", brutto: 14000 },
+          { date: "2025-11-05", type: "Personal", name: "Gehalt Nov", brutto: 15000, netto: 15000 },
+          { date: "2025-11-10", type: "Miete", name: "Ramen KL", brutto: 14000, netto: 11764.71 },
         ],
         expense_breakdown: [
           { category: "Personal", source: "office", brutto: 60000, count: 4, share: 0.6727 },
           { category: "Miete", source: "office", brutto: 28000, count: 2, share: 0.3139 },
           { category: "Bar Ausgabe", source: "daily_bar", brutto: 1183.74, count: 1, share: 0.0133 },
         ],
-        daily_expense_rows: [{ date: "2025-11-02", brutto: 168.83 }],
+        daily_expense_rows: [{ date: "2025-11-02", brutto: 168.83, netto: 141.87 }],
         warnings: [],
       };
+    },
+
+    async getManualExpenseTypes() {
+      return { schema_version: "v1", types: ["Personalkosten", "代付款"] };
+    },
+
+    async createManualExpenseType(type) {
+      return { schema_version: "v1", types: ["Personalkosten", "代付款", type] };
     },
   };
 }
