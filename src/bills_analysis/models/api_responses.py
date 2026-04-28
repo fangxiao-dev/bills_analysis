@@ -184,6 +184,13 @@ class OfficeReceiverOptionsResponse(StrictModel):
     options: list[OfficeReceiverOption] = Field(default_factory=list)
 
 
+class ManualExpenseTypesResponse(StrictModel):
+    """Configured manual Ausgabe type options for statistics input."""
+
+    schema_version: Literal["v1"] = SCHEMA_VERSION
+    types: list[str] = Field(default_factory=list)
+
+
 class StatisticsSummary(StrictModel):
     """Top-level monthly financial totals for the statistics dashboard."""
 
@@ -218,6 +225,7 @@ class OfficeStatisticsRow(StrictModel):
     type: str
     name: str | None = None
     brutto: float = 0
+    netto: float | None = None
 
 
 class ExpenseBreakdownItem(StrictModel):
@@ -235,6 +243,7 @@ class DailyExpenseRow(StrictModel):
 
     date: str
     brutto: float = 0
+    netto: float | None = None
 
 
 class MonthlyStatisticsResponse(StrictModel):

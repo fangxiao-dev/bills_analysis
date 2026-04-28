@@ -21,8 +21,17 @@ from bills_analysis.models.api_responses import (
     StatisticsSummary,
 )
 
-_AUSGABE_BRUTTO_RE = re.compile(r"^Ausgabe \d+ Brutto$")
+_AUSGABE_BRUTTO_RE = re.compile(r"^Ausgabe \d+ Brutto$", re.IGNORECASE)
+_AUSGABE_NETTO_RE = re.compile(r"^Ausgabe \d+ Netto$", re.IGNORECASE)
 UNCATEGORIZED = "Uncategorized"
+
+
+class DuplicateManualExpenseTypesError(ValueError):
+    """Raised when manual expense types duplicate Office workbook types."""
+
+    def __init__(self, duplicate_types: list[str]) -> None:
+        super().__init__("Manual expense types already exist in Office workbook")
+        self.duplicate_types = duplicate_types
 
 
 def _headers(ws: Worksheet) -> dict[str, int]:
@@ -47,11 +56,38 @@ def _to_decimal(value: Any, warnings: list[str], label: str) -> Decimal:
 
     if value is None or value == "":
         return Decimal("0")
+    text = str(value).strip()
+    if text.endswith("€"):
+        text = text[:-1].strip()
+    if "," in text and "." in text:
+        text = text.replace(".", "").replace(",", ".")
+    elif "," in text:
+        text = text.replace(",", ".")
     try:
-        return Decimal(str(value).replace(",", "."))
+        return Decimal(text)
     except InvalidOperation:
         warnings.append(f"Non-numeric value in {label}: {value!r}; treated as 0")
         return Decimal("0")
+
+
+def _to_manual_decimal(value: Any, label: str) -> Decimal:
+    """Convert manual input amount where comma or dot means decimal separator."""
+
+    if value is None or value == "":
+        raise ValueError(f"{label} is required")
+    text = str(value).strip()
+    if text.endswith("€"):
+        text = text[:-1].strip()
+    text = text.replace(" ", "")
+    if "," in text and "." in text:
+        raise ValueError(f"{label} must not contain thousands separators")
+    if text.count(",") > 1 or text.count(".") > 1:
+        raise ValueError(f"{label} must contain at most one decimal separator")
+    text = text.replace(",", ".")
+    try:
+        return Decimal(text)
+    except InvalidOperation as exc:
+        raise ValueError(f"{label} must be numeric") from exc
 
 
 def _date_text(value: Any) -> str | None:
@@ -81,7 +117,13 @@ def _share(value: Decimal, total: Decimal) -> float:
     return float((value / total).quantize(Decimal("0.0001")))
 
 
-def build_monthly_statistics(daily_xlsx: Path, office_xlsx: Path) -> MonthlyStatisticsResponse:
+def build_monthly_statistics(
+    daily_xlsx: Path,
+    office_xlsx: Path,
+    *,
+    manual_expense_rows: list[dict[str, Any]] | None = None,
+    allow_duplicate_manual_types: bool = False,
+) -> MonthlyStatisticsResponse:
     """Parse Daily/Bar and Office workbooks and return aggregated monthly statistics."""
 
     warnings: list[str] = []
@@ -97,7 +139,12 @@ def build_monthly_statistics(daily_xlsx: Path, office_xlsx: Path) -> MonthlyStat
         raise ValueError(f"Cannot read Office workbook: {exc}") from exc
 
     daily_series, daily_expense_rows, revenue_total, daily_expense_total = _parse_daily(daily_wb.active, warnings)
-    office_rows, office_by_type, office_total = _parse_office(office_wb.active, warnings)
+    office_rows, office_by_type, office_total = _parse_office(
+        office_wb.active,
+        warnings,
+        manual_expense_rows=manual_expense_rows or [],
+        allow_duplicate_manual_types=allow_duplicate_manual_types,
+    )
     profit = revenue_total - daily_expense_total - office_total
     expense_breakdown = _build_expense_breakdown(daily_expense_total, daily_expense_rows, office_by_type, office_total)
 
@@ -123,9 +170,11 @@ def _parse_daily(ws: Worksheet, warnings: list[str]) -> tuple[list[DailyStatisti
     headers = _headers(ws)
     _require(headers, ["Datum", "Umsatz Brutto"], "Daily")
     expense_cols = [name for name in headers if _AUSGABE_BRUTTO_RE.match(name)]
+    expense_netto_cols = [name for name in headers if _AUSGABE_NETTO_RE.match(name)]
 
     series: list[DailyStatisticsPoint] = []
     expense_by_date: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    expense_netto_by_date: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     revenue_total = Decimal("0")
     expense_total = Decimal("0")
 
@@ -135,10 +184,17 @@ def _parse_daily(ws: Worksheet, warnings: list[str]) -> tuple[list[DailyStatisti
         date_val = _date_text(row[headers["Datum"]])
         revenue = _to_decimal(row[headers["Umsatz Brutto"]], warnings, "Daily Umsatz Brutto")
         expense = sum((_to_decimal(row[headers[col]], warnings, col) for col in expense_cols), Decimal("0"))
+        expense_netto = sum((_to_decimal(row[headers[col]], warnings, col) for col in expense_netto_cols), Decimal("0"))
         revenue_total += revenue
         expense_total += expense
         if date_val and expense > 0:
+            if not expense_netto_cols:
+                warnings.append("Daily workbook has Bar Ausgabe Brutto values but no Ausgabe N Netto columns")
+            elif expense_netto == 0:
+                warnings.append(f"Daily Bar Ausgabe Netto is empty or zero for {date_val}")
             expense_by_date[date_val] += expense
+            if expense_netto_cols:
+                expense_netto_by_date[date_val] += expense_netto
         series.append(
             DailyStatisticsPoint(
                 date=date_val or "",
@@ -149,7 +205,11 @@ def _parse_daily(ws: Worksheet, warnings: list[str]) -> tuple[list[DailyStatisti
         )
 
     daily_expense_rows = [
-        DailyExpenseRow(date=date_key, brutto=_money(total))
+        DailyExpenseRow(
+            date=date_key,
+            brutto=_money(total),
+            netto=_money(expense_netto_by_date[date_key]) if expense_netto_cols else None,
+        )
         for date_key, total in sorted(expense_by_date.items(), key=lambda item: item[0])
         if total > 0
     ]
@@ -160,6 +220,9 @@ def _parse_daily(ws: Worksheet, warnings: list[str]) -> tuple[list[DailyStatisti
 def _parse_office(
     ws: Worksheet,
     warnings: list[str],
+    *,
+    manual_expense_rows: list[dict[str, Any]],
+    allow_duplicate_manual_types: bool,
 ) -> tuple[list[OfficeStatisticsRow], list[OfficeTypeBreakdown], Decimal]:
     """Parse the active Office sheet and return rows, type breakdowns, and total."""
 
@@ -168,6 +231,7 @@ def _parse_office(
 
     has_datum = "Datum" in headers
     has_name = "Rechnung Name" in headers
+    has_netto = "Netto" in headers
     rows: list[OfficeStatisticsRow] = []
     type_totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     type_counts: dict[str, int] = defaultdict(int)
@@ -183,6 +247,7 @@ def _parse_office(
             office_type = UNCATEGORIZED
 
         brutto = _to_decimal(row[headers["Brutto"]], warnings, "Office Brutto")
+        netto = _to_decimal(row[headers["Netto"]], warnings, "Office Netto") if has_netto else None
         date_val = _date_text(row[headers["Datum"]]) if has_datum else None
         name_val = None
         if has_name:
@@ -197,11 +262,21 @@ def _parse_office(
                 type=office_type,
                 name=name_val,
                 brutto=_money(brutto),
+                netto=_money(netto) if netto is not None else None,
             )
         )
         type_totals[office_type] += brutto
         type_counts[office_type] += 1
         office_total += brutto
+
+    _append_manual_expense_rows(
+        manual_expense_rows,
+        rows=rows,
+        type_totals=type_totals,
+        type_counts=type_counts,
+        allow_duplicate_manual_types=allow_duplicate_manual_types,
+    )
+    office_total = sum(type_totals.values(), Decimal("0"))
 
     by_type = sorted(
         [
@@ -218,6 +293,51 @@ def _parse_office(
     )
 
     return rows, by_type, office_total
+
+
+def _append_manual_expense_rows(
+    manual_rows: list[dict[str, Any]],
+    *,
+    rows: list[OfficeStatisticsRow],
+    type_totals: dict[str, Decimal],
+    type_counts: dict[str, int],
+    allow_duplicate_manual_types: bool,
+) -> None:
+    """Append confirmed manual Ausgabe rows into Office aggregation state."""
+
+    if not manual_rows:
+        return
+
+    canonical_by_key = {office_type.strip().casefold(): office_type for office_type in type_totals}
+    duplicates: list[str] = []
+    for item in manual_rows:
+        manual_type = str(item.get("type") or "").strip()
+        if manual_type and manual_type.casefold() in canonical_by_key:
+            duplicates.append(manual_type)
+    if duplicates and not allow_duplicate_manual_types:
+        deduped = list(dict.fromkeys(duplicates))
+        raise DuplicateManualExpenseTypesError(deduped)
+
+    for item in manual_rows:
+        manual_type = str(item.get("type") or "").strip()
+        if not manual_type:
+            raise ValueError("manual expense type is required")
+        office_type = canonical_by_key.get(manual_type.casefold(), manual_type)
+        brutto = _to_manual_decimal(item.get("brutto"), f"Manual {manual_type} Brutto")
+        netto_value = item.get("netto")
+        netto = _to_manual_decimal(netto_value, f"Manual {manual_type} Netto") if netto_value not in (None, "") else None
+        rows.append(
+            OfficeStatisticsRow(
+                date=None,
+                type=office_type,
+                name=office_type,
+                brutto=_money(brutto),
+                netto=_money(netto) if netto is not None else None,
+            )
+        )
+        type_totals[office_type] += brutto
+        type_counts[office_type] += 1
+        canonical_by_key.setdefault(office_type.casefold(), office_type)
 
 
 def _build_expense_breakdown(

@@ -32,6 +32,12 @@ class SubmitReviewRequest(StrictModel):
     rows: Annotated[list[dict[str, Any]], Field(min_length=1)]
 
 
+class CreateManualExpenseTypeRequest(StrictModel):
+    """Request payload for appending one statistics manual Ausgabe type."""
+
+    type: Annotated[str, Field(min_length=1)]
+
+
 class MergeRequest(StrictModel):
     """Request payload to trigger merge into target dataset."""
 

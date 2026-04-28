@@ -17,8 +17,10 @@ from pydantic import ValidationError
 
 from bills_analysis.integrations.container import AppContainer, build_container
 from bills_analysis.integrations.office_receiver_mapping import get_office_receiver_options as load_office_receiver_options
-from bills_analysis.services.statistics_service import build_monthly_statistics
+from bills_analysis.integrations.statistics_config import add_manual_expense_type, get_manual_expense_types
+from bills_analysis.services.statistics_service import DuplicateManualExpenseTypesError, build_monthly_statistics
 from bills_analysis.models.api_requests import (
+    CreateManualExpenseTypeRequest,
     CreateBatchRequest,
     CreateBatchUploadForm,
     MergeRequest,
@@ -30,6 +32,7 @@ from bills_analysis.models.api_responses import (
     BatchReviewRowsResponse,
     BatchResponse,
     CreateBatchUploadTaskResponse,
+    ManualExpenseTypesResponse,
     MergeSourceLocalResponse,
     MergeTaskResponse,
     MonthlyStatisticsResponse,
@@ -108,6 +111,25 @@ def _parse_metadata_json(raw_metadata: str | None) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise HTTPException(status_code=400, detail="metadata_json must be a JSON object")
     return parsed
+
+
+def _parse_manual_expense_rows_json(raw_rows: str | None) -> list[dict[str, Any]]:
+    """Decode manual statistics expense rows JSON form field."""
+
+    if raw_rows is None or raw_rows.strip() == "":
+        return []
+    try:
+        parsed = json.loads(raw_rows)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="manual_expense_rows_json must be valid JSON") from exc
+    if not isinstance(parsed, list):
+        raise HTTPException(status_code=400, detail="manual_expense_rows_json must be a JSON array")
+    rows: list[dict[str, Any]] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail="manual_expense_rows_json items must be JSON objects")
+        rows.append(dict(item))
+    return rows
 
 
 def _validate_pdf_upload(file: UploadFile, *, field_name: str) -> None:
@@ -222,6 +244,23 @@ async def get_office_receiver_options() -> OfficeReceiverOptionsResponse:
         default_city=str(payload.get("default_city") or ""),
         options=options,
     )
+
+
+@app.get("/v1/statistics/manual-expense-types", response_model=ManualExpenseTypesResponse)
+async def list_manual_expense_types() -> ManualExpenseTypesResponse:
+    """Return configured manual Ausgabe type options for statistics UI."""
+
+    return ManualExpenseTypesResponse(types=get_manual_expense_types())
+
+
+@app.post("/v1/statistics/manual-expense-types", response_model=ManualExpenseTypesResponse)
+async def create_manual_expense_type(req: CreateManualExpenseTypeRequest) -> ManualExpenseTypesResponse:
+    """Append one manual Ausgabe type option to statistics config."""
+
+    try:
+        return ManualExpenseTypesResponse(types=add_manual_expense_type(req.type))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/v1/batches", response_model=BatchResponse)
@@ -442,11 +481,14 @@ async def upload_local_merge_source(
 async def preview_monthly_statistics(
     daily_excel: UploadFile = File(...),
     office_excel: UploadFile = File(...),
+    manual_expense_rows_json: str | None = Form(None),
+    allow_duplicate_manual_types: bool = Form(False),
 ) -> MonthlyStatisticsResponse:
     """Preview monthly statistics from uploaded Daily/Bar and Office Excel workbooks."""
 
     _validate_excel_upload(daily_excel, field_name="daily_excel")
     _validate_excel_upload(office_excel, field_name="office_excel")
+    manual_expense_rows = _parse_manual_expense_rows_json(manual_expense_rows_json)
     upload_root = Path("outputs") / "webapp" / "statistics" / str(uuid4())
     try:
         daily_path = await _save_upload_file(
@@ -463,7 +505,20 @@ async def preview_monthly_statistics(
             index=2,
             forced_suffix=None,
         )
-        return build_monthly_statistics(daily_path, office_path)
+        return build_monthly_statistics(
+            daily_path,
+            office_path,
+            manual_expense_rows=manual_expense_rows,
+            allow_duplicate_manual_types=allow_duplicate_manual_types,
+        )
+    except DuplicateManualExpenseTypesError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "DUPLICATE_MANUAL_EXPENSE_TYPES",
+                "duplicate_types": exc.duplicate_types,
+            },
+        ) from exc
     except ValueError as exc:
         detail = str(exc)
         status_code = 400 if detail.startswith("Cannot read") else 422

@@ -6,6 +6,10 @@
     "netto": 0.5,
     "total_tax": 0.5
   },
+  "statistics_manual_expense_types": [
+    "Personalkosten",
+    "代付款"
+  ],
   "office_receiver_mapping": {
     "default_city": "Dortmund",
     "name_prefix": "Ramen Ippin ",
