@@ -12,7 +12,9 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from bills_analysis.models.api_responses import (
+    DailyExpenseRow,
     DailyStatisticsPoint,
+    ExpenseBreakdownItem,
     MonthlyStatisticsResponse,
     OfficeStatisticsRow,
     OfficeTypeBreakdown,
@@ -94,9 +96,10 @@ def build_monthly_statistics(daily_xlsx: Path, office_xlsx: Path) -> MonthlyStat
     except Exception as exc:
         raise ValueError(f"Cannot read Office workbook: {exc}") from exc
 
-    daily_series, revenue_total, daily_expense_total = _parse_daily(daily_wb.active, warnings)
+    daily_series, daily_expense_rows, revenue_total, daily_expense_total = _parse_daily(daily_wb.active, warnings)
     office_rows, office_by_type, office_total = _parse_office(office_wb.active, warnings)
     profit = revenue_total - daily_expense_total - office_total
+    expense_breakdown = _build_expense_breakdown(daily_expense_total, daily_expense_rows, office_by_type, office_total)
 
     return MonthlyStatisticsResponse(
         summary=StatisticsSummary(
@@ -108,18 +111,21 @@ def build_monthly_statistics(daily_xlsx: Path, office_xlsx: Path) -> MonthlyStat
         daily_series=daily_series,
         office_by_type=office_by_type,
         office_rows=office_rows,
+        expense_breakdown=expense_breakdown,
+        daily_expense_rows=daily_expense_rows,
         warnings=warnings,
     )
 
 
-def _parse_daily(ws: Worksheet, warnings: list[str]) -> tuple[list[DailyStatisticsPoint], Decimal, Decimal]:
-    """Parse the active Daily sheet and return series, revenue total, and expense total."""
+def _parse_daily(ws: Worksheet, warnings: list[str]) -> tuple[list[DailyStatisticsPoint], list[DailyExpenseRow], Decimal, Decimal]:
+    """Parse Daily sheet and return series, daily expense rows, revenue total, and expense total."""
 
     headers = _headers(ws)
     _require(headers, ["Datum", "Umsatz Brutto"], "Daily")
     expense_cols = [name for name in headers if _AUSGABE_BRUTTO_RE.match(name)]
 
     series: list[DailyStatisticsPoint] = []
+    expense_by_date: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     revenue_total = Decimal("0")
     expense_total = Decimal("0")
 
@@ -131,6 +137,8 @@ def _parse_daily(ws: Worksheet, warnings: list[str]) -> tuple[list[DailyStatisti
         expense = sum((_to_decimal(row[headers[col]], warnings, col) for col in expense_cols), Decimal("0"))
         revenue_total += revenue
         expense_total += expense
+        if date_val and expense > 0:
+            expense_by_date[date_val] += expense
         series.append(
             DailyStatisticsPoint(
                 date=date_val or "",
@@ -140,7 +148,13 @@ def _parse_daily(ws: Worksheet, warnings: list[str]) -> tuple[list[DailyStatisti
             )
         )
 
-    return series, revenue_total, expense_total
+    daily_expense_rows = [
+        DailyExpenseRow(date=date_key, brutto=_money(total))
+        for date_key, total in sorted(expense_by_date.items(), key=lambda item: item[0])
+        if total > 0
+    ]
+
+    return series, daily_expense_rows, revenue_total, expense_total
 
 
 def _parse_office(
@@ -204,3 +218,39 @@ def _parse_office(
     )
 
     return rows, by_type, office_total
+
+
+def _build_expense_breakdown(
+    daily_expense_total: Decimal,
+    daily_expense_rows: list[DailyExpenseRow],
+    office_by_type: list[OfficeTypeBreakdown],
+    office_total: Decimal,
+) -> list[ExpenseBreakdownItem]:
+    """Combine Bar Ausgabe and Office type totals for the expense breakdown chart."""
+
+    total_expense = daily_expense_total + office_total
+    items: list[ExpenseBreakdownItem] = []
+
+    if daily_expense_total != 0 or daily_expense_rows:
+        items.append(
+            ExpenseBreakdownItem(
+                category="Bar Ausgabe",
+                source="daily_bar",
+                brutto=_money(daily_expense_total),
+                count=len(daily_expense_rows),
+                share=_share(daily_expense_total, total_expense),
+            )
+        )
+
+    items.extend(
+        ExpenseBreakdownItem(
+            category=item.type,
+            source="office",
+            brutto=item.brutto,
+            count=item.count,
+            share=_share(Decimal(str(item.brutto)), total_expense),
+        )
+        for item in office_by_type
+    )
+
+    return sorted(items, key=lambda item: item.brutto, reverse=True)

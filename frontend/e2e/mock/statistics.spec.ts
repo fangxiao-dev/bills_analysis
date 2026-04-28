@@ -28,9 +28,10 @@ test.describe("Statistics Dashboard (mock)", () => {
 
     await expect(page.getByTestId("kpi-revenue")).toBeVisible();
     await expect(page.getByTestId("kpi-profit")).toBeVisible();
+    await expect(page.getByText("Bar Ausgabe")).toBeVisible();
   });
 
-  test("clicking an office type reveals detail rows", async ({ page }) => {
+  test("clicking expense categories reveals drilldown rows", async ({ page }) => {
     await page.goto("/statistics");
     const buffer = Buffer.from("placeholder");
 
@@ -47,6 +48,8 @@ test.describe("Statistics Dashboard (mock)", () => {
     await page.getByTestId("generate-button").click();
 
     await expect(page.getByTestId("kpi-revenue")).toBeVisible();
+    await page.getByText("Bar Ausgabe").click();
+    await expect(page.getByTestId("expense-drilldown")).toContainText("2025-11-02");
     await page.getByText("Miete").click();
     await expect(page.getByText("Ramen KL")).toBeVisible();
   });

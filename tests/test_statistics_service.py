@@ -75,6 +75,53 @@ def test_basic_aggregation(tmp_path: Path) -> None:
     assert round(result.daily_series[0].daily_expense_brutto, 2) == 80.0
 
 
+def test_expense_breakdown_combines_bar_ausgabe_and_office_types(tmp_path: Path) -> None:
+    """Expense breakdown should treat Bar Ausgabe and each Office type as categories."""
+
+    from bills_analysis.services.statistics_service import build_monthly_statistics
+
+    daily = _daily_wb(
+        tmp_path,
+        [
+            ["2025-11-01", 1000.0, 50.0, 30.0],
+            ["2025-11-02", 1200.0, 0.0, 20.0],
+            ["2025-11-02", 800.0, 10.0, 0.0],
+        ],
+    )
+    office = _office_wb(tmp_path, [["Miete", 400.0], ["Miete", 100.0], ["Personal", 300.0]])
+
+    result = build_monthly_statistics(daily, office)
+
+    breakdown = {item.category: item for item in result.expense_breakdown}
+    assert round(breakdown["Bar Ausgabe"].brutto, 2) == 110.0
+    assert breakdown["Bar Ausgabe"].source == "daily_bar"
+    assert breakdown["Bar Ausgabe"].count == 2
+    assert round(breakdown["Miete"].brutto, 2) == 500.0
+    assert breakdown["Miete"].source == "office"
+    assert breakdown["Personal"].source == "office"
+    assert round(breakdown["Miete"].share, 4) == round(500.0 / 910.0, 4)
+
+
+def test_daily_expense_rows_group_dates_and_skip_zero_days(tmp_path: Path) -> None:
+    """Daily expense drilldown rows are grouped by date and only include positive expense days."""
+
+    from bills_analysis.services.statistics_service import build_monthly_statistics
+
+    daily = _daily_wb(
+        tmp_path,
+        [
+            ["2025-11-01", 1000.0, 0.0, 0.0],
+            ["2025-11-02", 1200.0, 0.0, 20.0],
+            ["2025-11-02", 800.0, 10.0, 0.0],
+        ],
+    )
+    office = _office_wb(tmp_path, [["Miete", 100.0]])
+
+    result = build_monthly_statistics(daily, office)
+
+    assert [(row.date, round(row.brutto, 2)) for row in result.daily_expense_rows] == [("2025-11-02", 30.0)]
+
+
 def test_ausgabe_sum_brutto_not_double_counted(tmp_path: Path) -> None:
     """Ausgabe sum Brutto column must be ignored by the aggregation."""
 

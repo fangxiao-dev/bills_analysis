@@ -956,6 +956,26 @@
       "title": "CreateBatchUploadTaskResponse",
       "type": "object"
     },
+    "DailyExpenseRow": {
+      "additionalProperties": false,
+      "description": "One daily Bar Ausgabe total used for drilldown.",
+      "properties": {
+        "brutto": {
+          "default": 0,
+          "title": "Brutto",
+          "type": "number"
+        },
+        "date": {
+          "title": "Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date"
+      ],
+      "title": "DailyExpenseRow",
+      "type": "object"
+    },
     "DailyStatisticsPoint": {
       "additionalProperties": false,
       "description": "One daily revenue/expense point for trend charts.",
@@ -1016,6 +1036,45 @@
         "message"
       ],
       "title": "ErrorInfo",
+      "type": "object"
+    },
+    "ExpenseBreakdownItem": {
+      "additionalProperties": false,
+      "description": "One spending category used by the expense breakdown chart.",
+      "properties": {
+        "brutto": {
+          "default": 0,
+          "title": "Brutto",
+          "type": "number"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "count": {
+          "default": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "share": {
+          "default": 0,
+          "title": "Share",
+          "type": "number"
+        },
+        "source": {
+          "enum": [
+            "daily_bar",
+            "office"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "source"
+      ],
+      "title": "ExpenseBreakdownItem",
       "type": "object"
     },
     "HTTPValidationError": {
@@ -1203,11 +1262,25 @@
       "additionalProperties": false,
       "description": "Statistics preview response for uploaded monthly Excel files.",
       "properties": {
+        "daily_expense_rows": {
+          "items": {
+            "$ref": "#/components/schemas/DailyExpenseRow"
+          },
+          "title": "Daily Expense Rows",
+          "type": "array"
+        },
         "daily_series": {
           "items": {
             "$ref": "#/components/schemas/DailyStatisticsPoint"
           },
           "title": "Daily Series",
+          "type": "array"
+        },
+        "expense_breakdown": {
+          "items": {
+            "$ref": "#/components/schemas/ExpenseBreakdownItem"
+          },
+          "title": "Expense Breakdown",
           "type": "array"
         },
         "office_by_type": {

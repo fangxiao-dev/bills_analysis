@@ -697,6 +697,109 @@ button {
   background: #f8fbff;
 }
 
+.statistics-empty {
+  color: var(--ledger-smoke);
+  font-size: 0.86rem;
+}
+
+.statistics-expense-breakdown {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.statistics-pie {
+  width: 100%;
+  max-width: 190px;
+  min-height: 180px;
+}
+
+.statistics-pie-base {
+  fill: none;
+  stroke: #edf2fa;
+  stroke-width: 24;
+}
+
+.statistics-pie-slice {
+  fill: none;
+  stroke-width: 24;
+  transform: rotate(-90deg);
+  transform-origin: 90px 90px;
+  cursor: pointer;
+  transition: opacity 0.16s ease, stroke-width 0.16s ease;
+}
+
+.statistics-pie-slice:hover {
+  opacity: 0.82;
+  stroke-width: 27;
+}
+
+.statistics-pie-kicker {
+  fill: var(--ledger-smoke);
+  font-size: 0.56rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.statistics-pie-total {
+  fill: var(--ledger-ink);
+  font-size: 0.6rem;
+  font-weight: 700;
+}
+
+.statistics-expense-list {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.statistics-expense-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 0.5rem;
+  align-items: center;
+  border: 1px solid var(--ledger-line);
+  border-radius: 0.48rem;
+  background: #ffffff;
+  padding: 0.5rem 0.56rem;
+  text-align: left;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.statistics-expense-item:hover,
+.statistics-expense-item.selected {
+  border-color: #9db9e8;
+  background: #f1f6ff;
+}
+
+.statistics-expense-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+
+.statistics-expense-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ledger-ink);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statistics-expense-share,
+.statistics-expense-amount {
+  color: var(--ledger-smoke);
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.statistics-expense-breakdown .statistics-table-stack {
+  grid-column: 1 / -1;
+}
+
 .statistics-warnings {
   margin: 0;
   padding-left: 1.1rem;
@@ -758,6 +861,7 @@ button {
 
   .statistics-upload-grid,
   .statistics-grid,
+  .statistics-expense-breakdown,
   .statistics-kpi-strip {
     grid-template-columns: 1fr;
   }

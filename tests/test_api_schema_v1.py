@@ -110,7 +110,30 @@ def test_monthly_statistics_response_schema_version() -> None:
     assert response.daily_series == []
     assert response.office_by_type == []
     assert response.office_rows == []
+    assert response.expense_breakdown == []
+    assert response.daily_expense_rows == []
     assert response.warnings == []
+
+
+def test_expense_breakdown_item_model() -> None:
+    """ExpenseBreakdownItem stores source, category, amount, count, and share."""
+
+    from bills_analysis.models.api_responses import ExpenseBreakdownItem
+
+    item = ExpenseBreakdownItem(category="Bar Ausgabe", source="daily_bar", brutto=100.0, count=3, share=0.25)
+    assert item.category == "Bar Ausgabe"
+    assert item.source == "daily_bar"
+    assert item.share == 0.25
+
+
+def test_daily_expense_row_model() -> None:
+    """DailyExpenseRow stores one daily Bar Ausgabe drilldown total."""
+
+    from bills_analysis.models.api_responses import DailyExpenseRow
+
+    row = DailyExpenseRow(date="2025-11-02", brutto=30.0)
+    assert row.date == "2025-11-02"
+    assert row.brutto == 30.0
 
 
 def test_create_batch_request_alias_batch_type_is_accepted() -> None:

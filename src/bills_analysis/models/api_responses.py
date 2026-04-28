@@ -220,6 +220,23 @@ class OfficeStatisticsRow(StrictModel):
     brutto: float = 0
 
 
+class ExpenseBreakdownItem(StrictModel):
+    """One spending category used by the expense breakdown chart."""
+
+    category: str
+    source: Literal["daily_bar", "office"]
+    brutto: float = 0
+    count: int = 0
+    share: float = 0
+
+
+class DailyExpenseRow(StrictModel):
+    """One daily Bar Ausgabe total used for drilldown."""
+
+    date: str
+    brutto: float = 0
+
+
 class MonthlyStatisticsResponse(StrictModel):
     """Statistics preview response for uploaded monthly Excel files."""
 
@@ -228,4 +245,6 @@ class MonthlyStatisticsResponse(StrictModel):
     daily_series: list[DailyStatisticsPoint] = Field(default_factory=list)
     office_by_type: list[OfficeTypeBreakdown] = Field(default_factory=list)
     office_rows: list[OfficeStatisticsRow] = Field(default_factory=list)
+    expense_breakdown: list[ExpenseBreakdownItem] = Field(default_factory=list)
+    daily_expense_rows: list[DailyExpenseRow] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

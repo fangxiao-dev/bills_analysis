@@ -5,8 +5,8 @@ import { AlertBanner } from "../../../shared/ui/AlertBanner";
 import { Button } from "../../../shared/ui/Button";
 import { previewMonthlyStatistics } from "../api/statisticsClient";
 import { DailyTrendChart } from "../components/DailyTrendChart";
+import { ExpenseBreakdownPie } from "../components/ExpenseBreakdownPie";
 import { KpiStrip } from "../components/KpiStrip";
-import { OfficeTypeBreakdown } from "../components/OfficeTypeBreakdown";
 import { ProfitBridgeChart } from "../components/ProfitBridgeChart";
 
 /**
@@ -92,20 +92,29 @@ export function StatisticsPage() {
           <section className="ledger-shell statistics-results">
             <KpiStrip summary={result.summary} />
 
-            <section className="statistics-grid">
+            <section className="statistics-grid" data-testid="statistics-first-row">
               <article className="ledger-card section-enter p-4">
                 <h2 className="statistics-section-title">{t("statistics.profitBridge")}</h2>
                 <ProfitBridgeChart summary={result.summary} />
               </article>
               <article className="ledger-card section-enter p-4">
-                <h2 className="statistics-section-title">{t("statistics.dailyTrend")}</h2>
-                <DailyTrendChart series={result.daily_series || []} />
+                <h2 className="statistics-section-title">{t("statistics.expenseBreakdown")}</h2>
+                <ExpenseBreakdownPie
+                  breakdown={result.expense_breakdown || []}
+                  dailyRows={result.daily_expense_rows || []}
+                  officeRows={result.office_rows || []}
+                  labels={{
+                    spend: t("statistics.spend"),
+                    date: t("statistics.date"),
+                    name: t("statistics.name"),
+                  }}
+                />
               </article>
             </section>
 
-            <section className="ledger-card section-enter p-4">
-              <h2 className="statistics-section-title">{t("statistics.officeBreakdown")}</h2>
-              <OfficeTypeBreakdown byType={result.office_by_type || []} rows={result.office_rows || []} />
+            <section className="ledger-card section-enter p-4" data-testid="statistics-daily-trend-row">
+              <h2 className="statistics-section-title">{t("statistics.dailyTrend")}</h2>
+              <DailyTrendChart series={result.daily_series || []} />
             </section>
 
             {result.warnings?.length ? (

@@ -64,6 +64,12 @@ export async function attachMockApi(page: Page, scenario: MockScenario): Promise
           { date: "2025-11-05", type: "Personal", name: "Gehalt Nov", brutto: 15000.0 },
           { date: "2025-11-10", type: "Miete", name: "Ramen KL", brutto: 14000.0 },
         ],
+        expense_breakdown: [
+          { category: "Personal", source: "office", brutto: 60000.0, count: 4, share: 0.6727 },
+          { category: "Miete", source: "office", brutto: 28000.0, count: 2, share: 0.3139 },
+          { category: "Bar Ausgabe", source: "daily_bar", brutto: 1183.74, count: 1, share: 0.0133 },
+        ],
+        daily_expense_rows: [{ date: "2025-11-02", brutto: 168.83 }],
         warnings: [],
       });
       return;

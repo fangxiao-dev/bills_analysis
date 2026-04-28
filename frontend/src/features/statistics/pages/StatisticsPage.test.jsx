@@ -36,6 +36,11 @@ function statisticsPayload(overrides = {}) {
     daily_series: [{ date: "2025-11-01", revenue_brutto: 1000, daily_expense_brutto: 100 }],
     office_by_type: [{ type: "Miete", brutto: 200, count: 1, share: 1 }],
     office_rows: [{ date: "2025-11-02", type: "Miete", name: "Rent invoice", brutto: 200 }],
+    expense_breakdown: [
+      { category: "Miete", source: "office", brutto: 200, count: 1, share: 0.6667 },
+      { category: "Bar Ausgabe", source: "daily_bar", brutto: 100, count: 1, share: 0.3333 },
+    ],
+    daily_expense_rows: [{ date: "2025-11-01", brutto: 100 }],
     warnings: [],
     ...overrides,
   };
@@ -71,7 +76,21 @@ describe("StatisticsPage", () => {
     expect(screen.getByTestId("kpi-profit")).toHaveTextContent("700,00");
   });
 
-  it("shows office detail rows after selecting a type", async () => {
+  it("shows expense drilldown rows after selecting Bar Ausgabe", async () => {
+    mockPreviewMonthlyStatistics.mockResolvedValue(statisticsPayload());
+    renderPage();
+
+    fireEvent.change(screen.getByTestId("file-input-daily"), { target: { files: [excelFile("daily.xlsx")] } });
+    fireEvent.change(screen.getByTestId("file-input-office"), { target: { files: [excelFile("office.xlsx")] } });
+    fireEvent.click(screen.getByTestId("generate-button"));
+
+    await waitFor(() => screen.getByText("Bar Ausgabe"));
+    fireEvent.click(screen.getByText("Bar Ausgabe"));
+    expect(screen.getByText("2025-11-01")).toBeInTheDocument();
+    expect(screen.getByTestId("expense-drilldown")).toHaveTextContent("100,00");
+  });
+
+  it("shows office detail rows after selecting an expense type", async () => {
     mockPreviewMonthlyStatistics.mockResolvedValue(statisticsPayload());
     renderPage();
 
@@ -82,6 +101,22 @@ describe("StatisticsPage", () => {
     await waitFor(() => screen.getByText("Miete"));
     fireEvent.click(screen.getByText("Miete"));
     expect(screen.getByText("Rent invoice")).toBeInTheDocument();
+  });
+
+  it("places daily trend after the first-row chart pair", async () => {
+    mockPreviewMonthlyStatistics.mockResolvedValue(statisticsPayload());
+    renderPage();
+
+    fireEvent.change(screen.getByTestId("file-input-daily"), { target: { files: [excelFile("daily.xlsx")] } });
+    fireEvent.change(screen.getByTestId("file-input-office"), { target: { files: [excelFile("office.xlsx")] } });
+    fireEvent.click(screen.getByTestId("generate-button"));
+
+    await waitFor(() => expect(screen.getByTestId("statistics-first-row")).toBeInTheDocument());
+    const firstRow = screen.getByTestId("statistics-first-row");
+    expect(firstRow).toHaveTextContent("Revenue vs Expenses");
+    expect(firstRow).toHaveTextContent("Expense Breakdown");
+    expect(firstRow).not.toHaveTextContent("Daily Trend");
+    expect(screen.getByTestId("statistics-daily-trend-row")).toHaveTextContent("Daily Trend");
   });
 
   it("displays warnings returned by the backend", async () => {
