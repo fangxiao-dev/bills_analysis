@@ -590,6 +590,19 @@ def _mount_frontend_static_files(application: FastAPI) -> None:
     application.mount("/", StaticFiles(directory=str(dist_path), html=True), name="frontend")
 
 
+@app.get("/{path_name:path}", include_in_schema=False)
+async def spa_fallback(path_name: str) -> "FileResponse":
+    """Fallback route for SPA: serve index.html for unmatched client-side routes."""
+    dist_dir = os.getenv("FRONTEND_DIST_DIR", "").strip()
+    if not dist_dir:
+        raise HTTPException(status_code=404, detail="Frontend not configured")
+    index_path = Path(dist_dir) / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="Frontend index not found")
+    from fastapi.responses import FileResponse
+    return FileResponse(index_path)
+
+
 _mount_frontend_static_files(app)
 
 
