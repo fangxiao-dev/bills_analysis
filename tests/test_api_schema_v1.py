@@ -49,6 +49,70 @@ def test_create_batch_request_valid() -> None:
     assert req.run_date == "04/02/2026"
 
 
+def test_statistics_summary_defaults() -> None:
+    """StatisticsSummary should default all amounts to zero."""
+
+    from bills_analysis.models.api_responses import StatisticsSummary
+
+    summary = StatisticsSummary()
+    assert summary.revenue_brutto == 0
+    assert summary.daily_expense_brutto == 0
+    assert summary.office_expense_brutto == 0
+    assert summary.profit_brutto == 0
+
+
+def test_statistics_summary_rejects_extra_field() -> None:
+    """StatisticsSummary must reject unknown fields via StrictModel."""
+
+    from bills_analysis.models.api_responses import StatisticsSummary
+
+    with pytest.raises(ValidationError):
+        StatisticsSummary(revenue_brutto=1.0, unknown_field="x")
+
+
+def test_daily_statistics_point_requires_date() -> None:
+    """DailyStatisticsPoint requires a date string."""
+
+    from bills_analysis.models.api_responses import DailyStatisticsPoint
+
+    point = DailyStatisticsPoint(date="2025-11-01")
+    assert point.date == "2025-11-01"
+    assert point.revenue_brutto == 0
+
+
+def test_office_type_breakdown_share() -> None:
+    """OfficeTypeBreakdown stores computed share as float."""
+
+    from bills_analysis.models.api_responses import OfficeTypeBreakdown
+
+    breakdown = OfficeTypeBreakdown(type="Miete", brutto=5000.0, count=2, share=0.45)
+    assert breakdown.share == 0.45
+
+
+def test_office_statistics_row_optional_fields() -> None:
+    """OfficeStatisticsRow allows null date and name."""
+
+    from bills_analysis.models.api_responses import OfficeStatisticsRow
+
+    row = OfficeStatisticsRow(type="Miete")
+    assert row.date is None
+    assert row.name is None
+    assert row.brutto == 0
+
+
+def test_monthly_statistics_response_schema_version() -> None:
+    """MonthlyStatisticsResponse must carry schema_version == v1."""
+
+    from bills_analysis.models.api_responses import MonthlyStatisticsResponse, StatisticsSummary
+
+    response = MonthlyStatisticsResponse(summary=StatisticsSummary(), warnings=[])
+    assert response.schema_version == "v1"
+    assert response.daily_series == []
+    assert response.office_by_type == []
+    assert response.office_rows == []
+    assert response.warnings == []
+
+
 def test_create_batch_request_alias_batch_type_is_accepted() -> None:
     """Backward-compatible `batch_type` alias should still parse."""
 

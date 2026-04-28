@@ -182,3 +182,50 @@ class OfficeReceiverOptionsResponse(StrictModel):
     schema_version: Literal["v1"] = SCHEMA_VERSION
     default_city: str
     options: list[OfficeReceiverOption] = Field(default_factory=list)
+
+
+class StatisticsSummary(StrictModel):
+    """Top-level monthly financial totals for the statistics dashboard."""
+
+    revenue_brutto: float = 0
+    daily_expense_brutto: float = 0
+    office_expense_brutto: float = 0
+    profit_brutto: float = 0
+
+
+class DailyStatisticsPoint(StrictModel):
+    """One daily revenue/expense point for trend charts."""
+
+    date: str
+    revenue_brutto: float = 0
+    daily_expense_brutto: float = 0
+    profit_before_office_brutto: float = 0
+
+
+class OfficeTypeBreakdown(StrictModel):
+    """Office spending aggregation for one type."""
+
+    type: str
+    brutto: float = 0
+    count: int = 0
+    share: float = 0
+
+
+class OfficeStatisticsRow(StrictModel):
+    """One Office row used for type drilldown."""
+
+    date: str | None = None
+    type: str
+    name: str | None = None
+    brutto: float = 0
+
+
+class MonthlyStatisticsResponse(StrictModel):
+    """Statistics preview response for uploaded monthly Excel files."""
+
+    schema_version: Literal["v1"] = SCHEMA_VERSION
+    summary: StatisticsSummary
+    daily_series: list[DailyStatisticsPoint] = Field(default_factory=list)
+    office_by_type: list[OfficeTypeBreakdown] = Field(default_factory=list)
+    office_rows: list[OfficeStatisticsRow] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
