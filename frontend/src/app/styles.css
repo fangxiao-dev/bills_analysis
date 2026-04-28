@@ -740,7 +740,7 @@ button {
 
 .statistics-trend-tooltip text {
   fill: #ffffff;
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -1063,7 +1063,7 @@ button {
   }
 
   .statistics-trend-tooltip text {
-    font-size: 0.74rem;
+    font-size: 0.81rem;
   }
 
 }
@@ -1132,7 +1132,7 @@ button {
   }
 
   .statistics-trend-tooltip text {
-    font-size: 0.82rem;
+    font-size: 0.92rem;
   }
 
   .statistics-expense-breakdown {
