@@ -514,6 +514,62 @@
         "summary": "Get Batch Review Rows"
       }
     },
+    "/v1/statistics/manual-expense-types": {
+      "get": {
+        "description": "Return configured manual Ausgabe type options for statistics UI.",
+        "operationId": "list_manual_expense_types_v1_statistics_manual_expense_types_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualExpenseTypesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Manual Expense Types"
+      },
+      "post": {
+        "description": "Append one manual Ausgabe type option to statistics config.",
+        "operationId": "create_manual_expense_type_v1_statistics_manual_expense_types_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateManualExpenseTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualExpenseTypesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Manual Expense Type"
+      }
+    },
     "/v1/statistics/monthly-preview": {
       "post": {
         "description": "Preview monthly statistics from uploaded Daily/Bar and Office Excel workbooks.",
@@ -844,10 +900,26 @@
     },
     "Body_preview_monthly_statistics_v1_statistics_monthly_preview_post": {
       "properties": {
+        "allow_duplicate_manual_types": {
+          "default": false,
+          "title": "Allow Duplicate Manual Types",
+          "type": "boolean"
+        },
         "daily_excel": {
           "format": "binary",
           "title": "Daily Excel",
           "type": "string"
+        },
+        "manual_expense_rows_json": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Manual Expense Rows Json"
         },
         "office_excel": {
           "format": "binary",
@@ -956,6 +1028,22 @@
       "title": "CreateBatchUploadTaskResponse",
       "type": "object"
     },
+    "CreateManualExpenseTypeRequest": {
+      "additionalProperties": false,
+      "description": "Request payload for appending one statistics manual Ausgabe type.",
+      "properties": {
+        "type": {
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "CreateManualExpenseTypeRequest",
+      "type": "object"
+    },
     "DailyExpenseRow": {
       "additionalProperties": false,
       "description": "One daily Bar Ausgabe total used for drilldown.",
@@ -968,6 +1056,17 @@
         "date": {
           "title": "Date",
           "type": "string"
+        },
+        "netto": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Netto"
         }
       },
       "required": [
@@ -1149,6 +1248,27 @@
         "path"
       ],
       "title": "InputFile",
+      "type": "object"
+    },
+    "ManualExpenseTypesResponse": {
+      "additionalProperties": false,
+      "description": "Configured manual Ausgabe type options for statistics input.",
+      "properties": {
+        "schema_version": {
+          "const": "v1",
+          "default": "v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Types",
+          "type": "array"
+        }
+      },
+      "title": "ManualExpenseTypesResponse",
       "type": "object"
     },
     "MergeRequest": {
@@ -1403,6 +1523,17 @@
             }
           ],
           "title": "Name"
+        },
+        "netto": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Netto"
         },
         "type": {
           "title": "Type",

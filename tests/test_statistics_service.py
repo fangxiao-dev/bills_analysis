@@ -122,6 +122,65 @@ def test_daily_expense_rows_group_dates_and_skip_zero_days(tmp_path: Path) -> No
     assert [(row.date, round(row.brutto, 2)) for row in result.daily_expense_rows] == [("2025-11-02", 30.0)]
 
 
+def test_daily_expense_rows_include_netto_sum_when_present(tmp_path: Path) -> None:
+    """Daily expense drilldown rows include Ausgabe Netto totals when columns exist."""
+
+    from bills_analysis.services.statistics_service import build_monthly_statistics
+
+    daily = _daily_wb(
+        tmp_path,
+        [
+            ["2025-11-02", 1200.0, 20.0, 10.0, 16.8, 8.4],
+            ["2025-11-02", 800.0, 5.0, 0.0, 4.2, 0.0],
+        ],
+        extra_cols=["Ausgabe 1 Netto", "Ausgabe 2 Netto"],
+    )
+    office = _office_wb(tmp_path, [["Miete", 100.0]])
+
+    result = build_monthly_statistics(daily, office)
+
+    assert len(result.daily_expense_rows) == 1
+    assert result.daily_expense_rows[0].brutto == 35.0
+    assert result.daily_expense_rows[0].netto == 29.4
+
+
+def test_daily_expense_rows_accept_lowercase_netto_headers(tmp_path: Path) -> None:
+    """Daily expense netto columns may use lowercase netto in production workbooks."""
+
+    from bills_analysis.services.statistics_service import build_monthly_statistics
+
+    daily = _daily_wb(
+        tmp_path,
+        [["2025-11-02", 1200.0, 20.0, 10.0, 16.8, 8.4]],
+        extra_cols=["Ausgabe 1 netto", "Ausgabe 2 netto"],
+    )
+    office = _office_wb(tmp_path, [["Miete", 100.0]])
+
+    result = build_monthly_statistics(daily, office)
+
+    assert result.daily_expense_rows[0].brutto == 30.0
+    assert result.daily_expense_rows[0].netto == 25.2
+
+
+def test_daily_expense_rows_warn_when_item_netto_columns_absent(tmp_path: Path) -> None:
+    """Daily expense drilldown does not use Ausgabe Sum Netto as a source."""
+
+    from bills_analysis.services.statistics_service import build_monthly_statistics
+
+    daily = _daily_wb(
+        tmp_path,
+        [["2025-11-02", 1200.0, 20.0, 10.0, 25.2]],
+        extra_cols=["Ausgabe Sum Netto"],
+    )
+    office = _office_wb(tmp_path, [["Miete", 100.0]])
+
+    result = build_monthly_statistics(daily, office)
+
+    assert result.daily_expense_rows[0].brutto == 30.0
+    assert result.daily_expense_rows[0].netto is None
+    assert "no Ausgabe N Netto columns" in result.warnings[0]
+
+
 def test_ausgabe_sum_brutto_not_double_counted(tmp_path: Path) -> None:
     """Ausgabe sum Brutto column must be ignored by the aggregation."""
 
@@ -176,6 +235,72 @@ def test_office_optional_columns_datum_and_name(tmp_path: Path) -> None:
     assert row.date == "2025-12-11"
     assert row.name == "Landlord GmbH"
     assert row.type == "Miete"
+
+
+def test_office_rows_include_netto_when_column_present(tmp_path: Path) -> None:
+    """Office drilldown rows include Netto when the Office workbook has that column."""
+
+    from bills_analysis.services.statistics_service import build_monthly_statistics
+
+    daily = _daily_wb(tmp_path, [["2025-11-01", 100.0, 0.0, 0.0]])
+    office = _write_wb(
+        tmp_path,
+        "office.xlsx",
+        {"Office": [["Type", "Brutto", "Netto", "Datum", "Rechnung Name"], ["Reinigung", 2201.5, 1849.16, "2025-11-11", "KARAKOC"]]},
+    )
+
+    result = build_monthly_statistics(daily, office)
+
+    row = result.office_rows[0]
+    assert row.brutto == 2201.5
+    assert row.netto == 1849.16
+
+
+def test_manual_expense_rows_are_aggregated_with_office_types(tmp_path: Path) -> None:
+    """Manual Ausgabe rows contribute to office totals, details, and breakdowns."""
+
+    from bills_analysis.services.statistics_service import build_monthly_statistics
+
+    daily = _daily_wb(tmp_path, [["2025-11-01", 1000.0, 0.0, 0.0]])
+    office = _office_wb(tmp_path, [["Miete", 400.0]])
+
+    result = build_monthly_statistics(
+        daily,
+        office,
+        manual_expense_rows=[
+            {"type": "Personalkosten", "brutto": "1200,50", "netto": "1008.82"},
+            {"type": "代付款", "brutto": 300, "netto": 300},
+        ],
+        allow_duplicate_manual_types=True,
+    )
+
+    by_type = {row.type: row for row in result.office_by_type}
+    breakdown = {row.category: row for row in result.expense_breakdown}
+    details = {row.type: row for row in result.office_rows}
+    assert result.summary.office_expense_brutto == 1900.5
+    assert by_type["Personalkosten"].brutto == 1200.5
+    assert by_type["代付款"].brutto == 300.0
+    assert breakdown["Personalkosten"].source == "office"
+    assert details["Personalkosten"].netto == 1008.82
+
+
+def test_manual_expense_duplicate_office_type_requires_confirmation(tmp_path: Path) -> None:
+    """Manual types matching Office Type case-insensitively require confirmation."""
+
+    from bills_analysis.services.statistics_service import DuplicateManualExpenseTypesError, build_monthly_statistics
+
+    daily = _daily_wb(tmp_path, [["2025-11-01", 1000.0, 0.0, 0.0]])
+    office = _office_wb(tmp_path, [["Personalkosten", 400.0]])
+
+    with pytest.raises(DuplicateManualExpenseTypesError) as exc_info:
+        build_monthly_statistics(
+            daily,
+            office,
+            manual_expense_rows=[{"type": "personalkosten", "brutto": 1200.0, "netto": 1008.0}],
+            allow_duplicate_manual_types=False,
+        )
+
+    assert exc_info.value.duplicate_types == ["personalkosten"]
 
 
 def test_office_without_optional_columns(tmp_path: Path) -> None:

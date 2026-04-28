@@ -90,7 +90,7 @@ def test_office_type_breakdown_share() -> None:
 
 
 def test_office_statistics_row_optional_fields() -> None:
-    """OfficeStatisticsRow allows null date and name."""
+    """OfficeStatisticsRow allows null optional fields."""
 
     from bills_analysis.models.api_responses import OfficeStatisticsRow
 
@@ -98,6 +98,7 @@ def test_office_statistics_row_optional_fields() -> None:
     assert row.date is None
     assert row.name is None
     assert row.brutto == 0
+    assert row.netto is None
 
 
 def test_monthly_statistics_response_schema_version() -> None:
@@ -279,6 +280,30 @@ def test_office_receiver_options_endpoint_contract() -> None:
         assert isinstance(first["receiver_address"], str)
 
 
+def test_statistics_manual_expense_types_config_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Statistics manual type endpoints should read and append config-backed options."""
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"statistics_manual_expense_types": ["Personalkosten"]}), encoding="utf-8")
+    monkeypatch.setenv("STATISTICS_CONFIG_PATH", str(config_path))
+    TestClient, app = _get_test_client_and_app()
+
+    with TestClient(app) as client:
+        get_res = client.get("/v1/statistics/manual-expense-types")
+        create_res = client.post("/v1/statistics/manual-expense-types", json={"type": "代付款"})
+        second_get_res = client.get("/v1/statistics/manual-expense-types")
+
+    assert get_res.status_code == 200
+    assert get_res.json()["types"] == ["Personalkosten"]
+    assert create_res.status_code == 200
+    assert create_res.json()["types"] == ["Personalkosten", "代付款"]
+    assert second_get_res.json()["types"] == ["Personalkosten", "代付款"]
+    assert json.loads(config_path.read_text(encoding="utf-8"))["statistics_manual_expense_types"] == [
+        "Personalkosten",
+        "代付款",
+    ]
+
+
 def test_cors_preflight_options_for_create_batch() -> None:
     """CORS preflight OPTIONS for create-batch endpoint should not return 405."""
 
@@ -342,9 +367,9 @@ def test_monthly_statistics_preview_endpoint() -> None:
     )
     office_bytes = _make_excel_bytes_from_rows(
         [
-            ["Type", "Brutto", "Datum", "Rechnung Name"],
-            ["Miete", 4000.0, "2025-11-03", "Rent"],
-            ["Personal", 1000.0, "2025-11-04", "Payroll"],
+            ["Type", "Brutto", "Netto", "Datum", "Rechnung Name"],
+            ["Miete", 4000.0, 3361.34, "2025-11-03", "Rent"],
+            ["Personal", 1000.0, 840.34, "2025-11-04", "Payroll"],
         ],
         sheet_name="Office",
     )
@@ -374,6 +399,90 @@ def test_monthly_statistics_preview_endpoint() -> None:
     assert body["summary"]["profit_brutto"] == -2100.0
     assert body["office_by_type"][0]["type"] == "Miete"
     assert body["office_rows"][0]["name"] == "Rent"
+    assert body["office_rows"][0]["netto"] == 3361.34
+
+
+def test_monthly_statistics_preview_accepts_manual_expense_rows() -> None:
+    """Statistics preview should merge confirmed manual expense rows into Office totals."""
+
+    TestClient, app = _get_test_client_and_app()
+    daily_bytes = _make_excel_bytes_from_rows(
+        [["Datum", "Umsatz Brutto", "Ausgabe 1 Brutto"], ["2025-11-01", 1000.0, 0.0]],
+        sheet_name="Daily",
+    )
+    office_bytes = _make_excel_bytes_from_rows(
+        [["Type", "Brutto", "Netto"], ["Miete", 400.0, 336.13]],
+        sheet_name="Office",
+    )
+
+    with TestClient(app) as client:
+        res = client.post(
+            "/v1/statistics/monthly-preview",
+            data={
+                "manual_expense_rows_json": json.dumps(
+                    [{"type": "Personalkosten", "brutto": "1200,50", "netto": "1008.82"}]
+                ),
+                "allow_duplicate_manual_types": "true",
+            },
+            files={
+                "daily_excel": (
+                    "daily.xlsx",
+                    daily_bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+                "office_excel": (
+                    "office.xlsx",
+                    office_bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+            },
+        )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["summary"]["office_expense_brutto"] == 1600.5
+    assert any(row["type"] == "Personalkosten" and row["netto"] == 1008.82 for row in body["office_rows"])
+    assert any(row["category"] == "Personalkosten" for row in body["expense_breakdown"])
+
+
+def test_monthly_statistics_preview_rejects_duplicate_manual_type_until_confirmed() -> None:
+    """Manual type matching an Office Type case-insensitively should return conflict."""
+
+    TestClient, app = _get_test_client_and_app()
+    daily_bytes = _make_excel_bytes_from_rows(
+        [["Datum", "Umsatz Brutto", "Ausgabe 1 Brutto"], ["2025-11-01", 1000.0, 0.0]],
+        sheet_name="Daily",
+    )
+    office_bytes = _make_excel_bytes_from_rows(
+        [["Type", "Brutto", "Netto"], ["Personalkosten", 400.0, 336.13]],
+        sheet_name="Office",
+    )
+
+    with TestClient(app) as client:
+        res = client.post(
+            "/v1/statistics/monthly-preview",
+            data={
+                "manual_expense_rows_json": json.dumps(
+                    [{"type": "personalkosten", "brutto": 1200.0, "netto": 1008.0}]
+                ),
+            },
+            files={
+                "daily_excel": (
+                    "daily.xlsx",
+                    daily_bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+                "office_excel": (
+                    "office.xlsx",
+                    office_bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+            },
+        )
+
+    assert res.status_code == 409
+    assert res.json()["detail"]["code"] == "DUPLICATE_MANUAL_EXPENSE_TYPES"
+    assert res.json()["detail"]["duplicate_types"] == ["personalkosten"]
 
 
 def test_monthly_statistics_preview_missing_file_rejected() -> None:
