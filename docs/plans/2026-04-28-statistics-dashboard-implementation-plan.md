@@ -1750,3 +1750,83 @@ git commit -m "fix: stabilize statistics dashboard"
 ## Open Decision
 
 Office type `""` / `null` is grouped as `"Uncategorized"` in English. If the product copy should be German (`"Unkategorisiert"`) or left as-is, change `UNCATEGORIZED = "Uncategorized"` in `statistics_service.py` and the matching i18n label before starting Task 2.
+
+---
+
+## Addendum 2026-04-28: Expense Breakdown Pie and Drilldown
+
+**Goal:** Extend the statistics dashboard so spending has its own drilldown pie chart. `Bar Ausgabe` is one expense category, and each Office `Type` is its own expense category. The first Bar Ausgabe drilldown level is daily totals only.
+
+**Confirmed UX layout:**
+
+- Result row 1:
+  - Left: `Einnahmen vs. Ausgaben` / revenue-expense bridge.
+  - Right: `Ausgabenstruktur` / expense breakdown pie with category list and drilldown.
+- Result row 2:
+  - `Tagesverlauf` / daily trend.
+
+**Contract additions:**
+
+- Add `ExpenseBreakdownItem`:
+  - `category: str`
+  - `source: Literal["daily_bar", "office"]`
+  - `brutto: float`
+  - `count: int`
+  - `share: float`
+- Add `DailyExpenseRow`:
+  - `date: str`
+  - `brutto: float`
+- Add to `MonthlyStatisticsResponse`:
+  - `expense_breakdown: list[ExpenseBreakdownItem]`
+  - `daily_expense_rows: list[DailyExpenseRow]`
+
+**Backend aggregation update:**
+
+- Reuse the existing Daily parser's per-row `daily_expense_brutto`.
+- Build `daily_expense_rows` by grouping Daily/Bar expenses by date.
+- Exclude zero-amount Daily expense dates from drilldown rows.
+- Build `expense_breakdown` from:
+  - `Bar Ausgabe`: total Daily/Bar `Ausgabe <N> Brutto`; count should be the number of dates with positive Daily/Bar expense.
+  - Office categories: existing `office_by_type` rows, one per type.
+- Compute `share` against `daily_expense_total + office_expense_total`.
+- Do not use `Ausgabe sum Brutto` as a source field.
+
+**Frontend update:**
+
+- Add `ExpenseBreakdownPie` component using native SVG.
+- The component should render:
+  - Pie slices for each `expense_breakdown` category.
+  - A selectable category list with amount and share.
+  - A drilldown table.
+- Drilldown behavior:
+  - `source === "daily_bar"` shows `daily_expense_rows` with date and Brutto.
+  - `source === "office"` filters `office_rows` by `type === category`.
+- Adjust `StatisticsPage` layout:
+  - Keep `ProfitBridgeChart` and `ExpenseBreakdownPie` in the first row.
+  - Move `DailyTrendChart` to the next row.
+  - Remove or replace the old standalone Office type breakdown area if it duplicates the new pie drilldown.
+
+**Testing update:**
+
+- Backend tests:
+  - `expense_breakdown` includes one `Bar Ausgabe` item plus Office type items.
+  - `daily_expense_rows` groups duplicate dates and excludes zero dates.
+  - shares are computed against total spend, not Office-only spend.
+- Frontend tests:
+  - pie/list renders `Bar Ausgabe` and at least one Office type.
+  - selecting `Bar Ausgabe` shows daily expense rows.
+  - selecting an Office type shows Office invoice rows.
+  - layout keeps daily trend after the first-row chart pair.
+- Playwright mock:
+  - happy path verifies the expense breakdown appears.
+  - drilldown verifies both `Bar Ausgabe` daily rows and Office rows.
+
+**Verification commands:**
+
+```powershell
+uv run pytest tests/test_statistics_service.py tests/test_api_schema_v1.py -k "expense_breakdown or statistics or monthly_statistics_preview" -q
+cd frontend
+pnpm test -- StatisticsPage statisticsClient.real.test.js
+pnpm playwright:mock -- e2e/mock/statistics.spec.ts
+pnpm build
+```
