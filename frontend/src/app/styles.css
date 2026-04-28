@@ -602,13 +602,21 @@ button {
   padding: 0.72rem 0.8rem;
 }
 
+.statistics-kpi-tile.revenue {
+  border-left: 4px solid #3b6f9e;
+}
+
 .statistics-kpi-tile.income {
   border-left: 4px solid #0f9f6e;
 }
 
 .statistics-kpi-tile.expense,
 .statistics-kpi-tile.loss {
-  border-left: 4px solid #d0475f;
+  border-left: 4px solid #b94c5d;
+}
+
+.statistics-kpi-tile.profit {
+  border-left: 4px solid #4c8a68;
 }
 
 .statistics-kpi-label {

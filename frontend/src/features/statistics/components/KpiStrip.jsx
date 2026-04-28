@@ -10,10 +10,10 @@ const currency = new Intl.NumberFormat("de-DE", {
 export function KpiStrip({ summary }) {
   return (
     <section className="statistics-kpi-strip">
-      <KpiTile testId="kpi-revenue" label="Revenue" value={summary.revenue_brutto} tone="income" />
+      <KpiTile testId="kpi-revenue" label="Revenue" value={summary.revenue_brutto} tone="revenue" />
       <KpiTile testId="kpi-daily-expense" label="Daily expense" value={summary.daily_expense_brutto} tone="expense" />
       <KpiTile testId="kpi-office-expense" label="Office expense" value={summary.office_expense_brutto} tone="expense" />
-      <KpiTile testId="kpi-profit" label="Profit" value={summary.profit_brutto} tone={summary.profit_brutto >= 0 ? "income" : "loss"} />
+      <KpiTile testId="kpi-profit" label="Profit" value={summary.profit_brutto} tone={summary.profit_brutto >= 0 ? "profit" : "loss"} />
     </section>
   );
 }
