@@ -513,6 +513,45 @@
         },
         "summary": "Get Batch Review Rows"
       }
+    },
+    "/v1/statistics/monthly-preview": {
+      "post": {
+        "description": "Preview monthly statistics from uploaded Daily/Bar and Office Excel workbooks.",
+        "operationId": "preview_monthly_statistics_v1_statistics_monthly_preview_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_monthly_statistics_v1_statistics_monthly_preview_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonthlyStatisticsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Monthly Statistics"
+      }
     }
   },
   "schemas": {
@@ -803,6 +842,26 @@
       "title": "Body_create_batch_upload_v1_batches_upload_post",
       "type": "object"
     },
+    "Body_preview_monthly_statistics_v1_statistics_monthly_preview_post": {
+      "properties": {
+        "daily_excel": {
+          "format": "binary",
+          "title": "Daily Excel",
+          "type": "string"
+        },
+        "office_excel": {
+          "format": "binary",
+          "title": "Office Excel",
+          "type": "string"
+        }
+      },
+      "required": [
+        "daily_excel",
+        "office_excel"
+      ],
+      "title": "Body_preview_monthly_statistics_v1_statistics_monthly_preview_post",
+      "type": "object"
+    },
     "Body_upload_local_merge_source_v1_batches__batch_id__merge_source_local_post": {
       "properties": {
         "file": {
@@ -895,6 +954,36 @@
         "created_at"
       ],
       "title": "CreateBatchUploadTaskResponse",
+      "type": "object"
+    },
+    "DailyStatisticsPoint": {
+      "additionalProperties": false,
+      "description": "One daily revenue/expense point for trend charts.",
+      "properties": {
+        "daily_expense_brutto": {
+          "default": 0,
+          "title": "Daily Expense Brutto",
+          "type": "number"
+        },
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "profit_before_office_brutto": {
+          "default": 0,
+          "title": "Profit Before Office Brutto",
+          "type": "number"
+        },
+        "revenue_brutto": {
+          "default": 0,
+          "title": "Revenue Brutto",
+          "type": "number"
+        }
+      },
+      "required": [
+        "date"
+      ],
+      "title": "DailyStatisticsPoint",
       "type": "object"
     },
     "ErrorInfo": {
@@ -1110,6 +1199,54 @@
       "title": "MergeTaskResponse",
       "type": "object"
     },
+    "MonthlyStatisticsResponse": {
+      "additionalProperties": false,
+      "description": "Statistics preview response for uploaded monthly Excel files.",
+      "properties": {
+        "daily_series": {
+          "items": {
+            "$ref": "#/components/schemas/DailyStatisticsPoint"
+          },
+          "title": "Daily Series",
+          "type": "array"
+        },
+        "office_by_type": {
+          "items": {
+            "$ref": "#/components/schemas/OfficeTypeBreakdown"
+          },
+          "title": "Office By Type",
+          "type": "array"
+        },
+        "office_rows": {
+          "items": {
+            "$ref": "#/components/schemas/OfficeStatisticsRow"
+          },
+          "title": "Office Rows",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "v1",
+          "default": "v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/components/schemas/StatisticsSummary"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "title": "MonthlyStatisticsResponse",
+      "type": "object"
+    },
     "OfficeReceiverOption": {
       "additionalProperties": false,
       "description": "One office receiver city option exposed to upload UI.",
@@ -1161,6 +1298,78 @@
         "default_city"
       ],
       "title": "OfficeReceiverOptionsResponse",
+      "type": "object"
+    },
+    "OfficeStatisticsRow": {
+      "additionalProperties": false,
+      "description": "One Office row used for type drilldown.",
+      "properties": {
+        "brutto": {
+          "default": 0,
+          "title": "Brutto",
+          "type": "number"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Date"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "OfficeStatisticsRow",
+      "type": "object"
+    },
+    "OfficeTypeBreakdown": {
+      "additionalProperties": false,
+      "description": "Office spending aggregation for one type.",
+      "properties": {
+        "brutto": {
+          "default": 0,
+          "title": "Brutto",
+          "type": "number"
+        },
+        "count": {
+          "default": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "share": {
+          "default": 0,
+          "title": "Share",
+          "type": "number"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "OfficeTypeBreakdown",
       "type": "object"
     },
     "ReportErrorResponse": {
@@ -1223,6 +1432,34 @@
         "corrected_type"
       ],
       "title": "ReportTypeCorrection",
+      "type": "object"
+    },
+    "StatisticsSummary": {
+      "additionalProperties": false,
+      "description": "Top-level monthly financial totals for the statistics dashboard.",
+      "properties": {
+        "daily_expense_brutto": {
+          "default": 0,
+          "title": "Daily Expense Brutto",
+          "type": "number"
+        },
+        "office_expense_brutto": {
+          "default": 0,
+          "title": "Office Expense Brutto",
+          "type": "number"
+        },
+        "profit_brutto": {
+          "default": 0,
+          "title": "Profit Brutto",
+          "type": "number"
+        },
+        "revenue_brutto": {
+          "default": 0,
+          "title": "Revenue Brutto",
+          "type": "number"
+        }
+      },
+      "title": "StatisticsSummary",
       "type": "object"
     },
     "SubmitReviewRequest": {

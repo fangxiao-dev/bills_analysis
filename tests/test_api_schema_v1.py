@@ -289,14 +289,107 @@ def test_cors_uses_env_allow_origins_for_parallel_frontend_ports(monkeypatch: py
 def _make_excel_bytes() -> bytes:
     """Build in-memory workbook bytes for multipart Excel upload tests."""
 
+    return _make_excel_bytes_from_rows([["Datum", "Umsatz Brutto"], ["04/02/2026", 12.34]], sheet_name="Monthly")
+
+
+def _make_excel_bytes_from_rows(rows: list[list[Any]], *, sheet_name: str = "Monthly") -> bytes:
+    """Build in-memory workbook bytes from row values."""
+
     wb = Workbook()
     ws = wb.active
-    ws.title = "Monthly"
-    ws.append(["Datum", "Umsatz Brutto"])
-    ws.append(["04/02/2026", 12.34])
+    ws.title = sheet_name
+    for row in rows:
+        ws.append(row)
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def test_monthly_statistics_preview_endpoint() -> None:
+    """Statistics preview endpoint should aggregate two uploaded monthly workbooks."""
+
+    TestClient, app = _get_test_client_and_app()
+    daily_bytes = _make_excel_bytes_from_rows(
+        [
+            ["Datum", "Umsatz Brutto", "Ausgabe 1 Brutto", "Ausgabe 2 Brutto", "Ausgabe sum Brutto"],
+            ["2025-11-01", 1000.0, 50.0, 30.0, 80.0],
+            ["2025-11-02", 2000.0, 0.0, 20.0, 20.0],
+        ],
+        sheet_name="Daily",
+    )
+    office_bytes = _make_excel_bytes_from_rows(
+        [
+            ["Type", "Brutto", "Datum", "Rechnung Name"],
+            ["Miete", 4000.0, "2025-11-03", "Rent"],
+            ["Personal", 1000.0, "2025-11-04", "Payroll"],
+        ],
+        sheet_name="Office",
+    )
+    with TestClient(app) as client:
+        res = client.post(
+            "/v1/statistics/monthly-preview",
+            files={
+                "daily_excel": (
+                    "daily.xlsx",
+                    daily_bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+                "office_excel": (
+                    "office.xlsx",
+                    office_bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+            },
+        )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["schema_version"] == "v1"
+    assert body["summary"]["revenue_brutto"] == 3000.0
+    assert body["summary"]["daily_expense_brutto"] == 100.0
+    assert body["summary"]["office_expense_brutto"] == 5000.0
+    assert body["summary"]["profit_brutto"] == -2100.0
+    assert body["office_by_type"][0]["type"] == "Miete"
+    assert body["office_rows"][0]["name"] == "Rent"
+
+
+def test_monthly_statistics_preview_missing_file_rejected() -> None:
+    """Statistics preview endpoint requires both Daily and Office files."""
+
+    TestClient, app = _get_test_client_and_app()
+    with TestClient(app) as client:
+        res = client.post(
+            "/v1/statistics/monthly-preview",
+            files={
+                "daily_excel": (
+                    "daily.xlsx",
+                    _make_excel_bytes(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+            },
+        )
+
+    assert res.status_code == 422
+
+
+def test_monthly_statistics_preview_invalid_file_rejected() -> None:
+    """Statistics preview endpoint rejects non-Excel uploads."""
+
+    TestClient, app = _get_test_client_and_app()
+    with TestClient(app) as client:
+        res = client.post(
+            "/v1/statistics/monthly-preview",
+            files={
+                "daily_excel": ("daily.txt", b"not excel", "text/plain"),
+                "office_excel": (
+                    "office.xlsx",
+                    _make_excel_bytes_from_rows([["Type", "Brutto"], ["Miete", 1.0]], sheet_name="Office"),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+            },
+        )
+
+    assert res.status_code == 400
 
 
 def test_review_rows_and_preview_routes() -> None:
@@ -1711,7 +1804,7 @@ def _openapi_contract_subset(spec: dict) -> dict:
 
     paths = {}
     for path, methods in spec.get("paths", {}).items():
-        if not path.startswith("/v1/batches") and path != "/healthz":
+        if not path.startswith("/v1/batches") and not path.startswith("/v1/statistics") and path != "/healthz":
             continue
         paths[path] = methods
     components = spec.get("components", {}).get("schemas", {})

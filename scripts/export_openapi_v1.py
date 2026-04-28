@@ -10,7 +10,7 @@ def openapi_contract_subset(spec: dict) -> dict:
 
     paths = {}
     for path, methods in spec.get("paths", {}).items():
-        if not path.startswith("/v1/batches") and path != "/healthz":
+        if not path.startswith("/v1/batches") and not path.startswith("/v1/statistics") and path != "/healthz":
             continue
         paths[path] = methods
     components = spec.get("components", {}).get("schemas", {})

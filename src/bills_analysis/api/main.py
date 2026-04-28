@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from pathlib import Path
@@ -16,6 +17,7 @@ from pydantic import ValidationError
 
 from bills_analysis.integrations.container import AppContainer, build_container
 from bills_analysis.integrations.office_receiver_mapping import get_office_receiver_options as load_office_receiver_options
+from bills_analysis.services.statistics_service import build_monthly_statistics
 from bills_analysis.models.api_requests import (
     CreateBatchRequest,
     CreateBatchUploadForm,
@@ -30,6 +32,7 @@ from bills_analysis.models.api_responses import (
     CreateBatchUploadTaskResponse,
     MergeSourceLocalResponse,
     MergeTaskResponse,
+    MonthlyStatisticsResponse,
     OfficeReceiverOption,
     OfficeReceiverOptionsResponse,
     ReportErrorResponse,
@@ -433,6 +436,40 @@ async def upload_local_merge_source(
         monthly_excel_path=str(saved_path.resolve()),
         created_at=batch.updated_at,
     )
+
+
+@app.post("/v1/statistics/monthly-preview", response_model=MonthlyStatisticsResponse)
+async def preview_monthly_statistics(
+    daily_excel: UploadFile = File(...),
+    office_excel: UploadFile = File(...),
+) -> MonthlyStatisticsResponse:
+    """Preview monthly statistics from uploaded Daily/Bar and Office Excel workbooks."""
+
+    _validate_excel_upload(daily_excel, field_name="daily_excel")
+    _validate_excel_upload(office_excel, field_name="office_excel")
+    upload_root = Path("outputs") / "webapp" / "statistics" / str(uuid4())
+    try:
+        daily_path = await _save_upload_file(
+            daily_excel,
+            dest_dir=upload_root,
+            prefix="daily",
+            index=1,
+            forced_suffix=None,
+        )
+        office_path = await _save_upload_file(
+            office_excel,
+            dest_dir=upload_root,
+            prefix="office",
+            index=2,
+            forced_suffix=None,
+        )
+        return build_monthly_statistics(daily_path, office_path)
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 400 if detail.startswith("Cannot read") else 422
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    finally:
+        shutil.rmtree(upload_root, ignore_errors=True)
 
 
 @app.post("/v1/batches/{batch_id}/report-error", response_model=ReportErrorResponse)
