@@ -28,7 +28,7 @@ uv.lock
 .git/
 .gitignore
 
-# Test scripts (config.json is explicitly COPY'd separately)
+# Test scripts (runtime config is under config/app_config.json)
 tests/*.py
 
 # Editor/OS

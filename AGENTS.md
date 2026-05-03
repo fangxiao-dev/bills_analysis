@@ -40,7 +40,7 @@
 - API contract 以 `src/bills_analysis/models/` 为唯一来源。
 - `v1` 在 M1 期间冻结，禁止 breaking change；如必须变更，先升级版本并记录迁移风险。
 - `.env` 不入库，示例放 `.env.example`。
-- 阈值与业务参数当前统一走 `tests/config.json`。
+- 阈值与业务参数当前统一走 `config/app_config.json`。
 - 所有 merge 写入需保留审计日志：操作者、时间、目标表、变更摘要。
 - 新增或修改的函数、类、枚举、脚本注释规范见 `.claude/rules/commenting-conventions.md`。
 

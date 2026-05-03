@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from bills_analysis.integrations.app_config import resolve_app_config_path
 from bills_analysis.services.review_service import export_daily_review_excel
 
 
@@ -22,7 +23,7 @@ def main() -> None:
     out_path = export_daily_review_excel(
         args.json_path,
         excel_path=args.excel_path,
-        config_path=Path(__file__).with_name("config.json"),
+        config_path=resolve_app_config_path(),
     )
     print(f"[Excel] Written: {out_path}")
 

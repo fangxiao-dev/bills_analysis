@@ -18,8 +18,8 @@ WORKDIR /app
 COPY pyproject.toml ./
 COPY src/ ./src/
 RUN pip install --no-cache-dir -e ".[web]"
-# tests/config.json is loaded at runtime by local_backend.py
-COPY tests/config.json ./tests/config.json
+# Runtime business config used by extraction, review, statistics, and receiver mapping.
+COPY config/app_config.json ./config/app_config.json
 COPY --from=frontend-builder /build/dist ./frontend/dist
 RUN mkdir -p /app/outputs/webapp
 ENV HOST=0.0.0.0

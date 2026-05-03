@@ -7,12 +7,13 @@ import os
 from pathlib import Path
 from typing import Any
 
+from bills_analysis.integrations.app_config import resolve_app_config_path
+
 DEFAULT_CITY = "Dortmund"
 DEFAULT_NAME_PREFIX = "Ramen Ippin "
 DEFAULT_NAME_SUFFIX = " GmbH"
 DEFAULT_RECEIVER_ADDRESS = "Reinoldistr.8 44135 Dortmund"
 DEFAULT_RECEIVER_NAME = "Ramen Ippin Dortmund GmbH"
-DEFAULT_CONFIG_PATH = Path("tests") / "config.json"
 
 
 def _resolve_config_path() -> Path:
@@ -21,7 +22,7 @@ def _resolve_config_path() -> Path:
     custom = os.getenv("OFFICE_RECEIVER_CONFIG_PATH", "").strip()
     if custom:
         return Path(custom)
-    return DEFAULT_CONFIG_PATH
+    return resolve_app_config_path()
 
 
 def _load_json(path: Path) -> dict[str, Any]:

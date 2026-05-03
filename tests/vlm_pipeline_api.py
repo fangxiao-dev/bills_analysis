@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from bills_analysis.integrations.app_config import resolve_app_config_path
 from bills_analysis.services.process_service import ROOT_DIR, run_pipeline as run_pipeline_service
 
 
@@ -95,7 +96,7 @@ def main() -> None:
         print("必须提供至少一个 PDF 路径，或使用 --input-dir")
         raise SystemExit(1)
 
-    thresholds_path = Path(__file__).with_name("config.json")
+    thresholds_path = resolve_app_config_path()
     max_pages = 4
     if thresholds_path.exists():
         try:

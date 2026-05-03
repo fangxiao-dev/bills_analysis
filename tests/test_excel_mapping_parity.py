@@ -49,7 +49,7 @@ def test_daily_excel_mapping_parity() -> None:
         ],
     )
 
-    out_path = export_daily_review_excel(json_path, config_path=Path("tests/config.json"))
+    out_path = export_daily_review_excel(json_path, config_path=Path("config/app_config.json"))
     wb = load_workbook(out_path)
     ws = wb.active
     headers = [cell.value for cell in ws[1]]
@@ -89,7 +89,7 @@ def test_office_excel_mapping_parity() -> None:
         ],
     )
 
-    out_path = export_office_review_excel(json_path, config_path=Path("tests/config.json"))
+    out_path = export_office_review_excel(json_path, config_path=Path("config/app_config.json"))
     wb = load_workbook(out_path)
     ws = wb.active
 

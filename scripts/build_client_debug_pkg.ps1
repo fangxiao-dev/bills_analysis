@@ -4,8 +4,8 @@
 
 .DESCRIPTION
     Creates a standalone, customer-ready deployment package with:
-    - All necessary source code and configuration
-    - Frontend with pre-compiled dependencies (node_modules included)
+    - All necessary source code and runtime configuration
+    - Frontend source and lockfile; dependencies are installed during Docker build
     - Excluded: git metadata, internal docs, caches, .env files with secrets
 
     Uses git to determine which files to include for accuracy.
@@ -37,6 +37,7 @@ $whitelistedFiles = @(
     'Dockerfile'
     'docker-compose.yml'
     '.env.docker.example'
+    'config/app_config.json'
     'requirments_engineering.md'
     '用户使用说明.md'
 )
@@ -45,7 +46,6 @@ $whitelistedDirs = @(
     'cli'
     'frontend'
     'src'
-    'tests'
     'scripts'
 )
 
@@ -63,6 +63,7 @@ $excludedPatterns = @(
     '\.pyo$'
     '^\.env$'
     '^\.env\.'
+    '^frontend/node_modules'
     'node_modules/\.bin'
     '^dataset'
     '^outputs'
@@ -85,7 +86,7 @@ $criticalFiles = @(
     'frontend/index.html'
     'src/bills_analysis/api/main.py'
     'src/bills_analysis/cli.py'
-    'tests/config.json'
+    'config/app_config.json'
 )
 
 # ===== HELPER FUNCTIONS =====
@@ -241,7 +242,12 @@ foreach ($file in $allRootFiles) {
 foreach ($fileName in $whitelistedFiles) {
     $src = Join-Path (Get-Location) $fileName
     if ((Test-Path $src) -and -not ($allRootFiles.Name -contains $fileName)) {
-        Copy-Item -Path $src -Destination $outputDir -Force -ErrorAction SilentlyContinue
+        $dest = Join-Path $outputDir $fileName
+        $destDir = Split-Path $dest
+        if (-not (Test-Path $destDir)) {
+            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+        }
+        Copy-Item -Path $src -Destination $dest -Force -ErrorAction SilentlyContinue
         Write-Host "  ✓ $fileName (recovered)" -ForegroundColor Green
         $filesAdded++
     }

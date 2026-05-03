@@ -15,6 +15,6 @@
 
 - 遵循 `collaboration-boundaries.md` 中的文件范围语义指导
 - `.env` 不入库，示例配置放 `.env.example`
-- 阈值与业务参数统一走 `tests/config.json`
+- 阈值与业务参数统一走 `config/app_config.json`
 - 所有 merge 写入需保留审计日志
 - 若使用 `worktree` 模式，合并前必须先同步 trunk 并通过回归验证

@@ -62,7 +62,7 @@
 
 - `v1` contract 在 M1 期间不得发生 breaking change
 - `.env` 不入库，示例配置放 `.env.example`
-- 阈值与业务参数统一走 `tests/config.json`
+- 阈值与业务参数统一走 `config/app_config.json`
 - 所有 merge 写入需保留审计日志
 
 若使用 `worktree` 模式，merge 前还必须通过对应回归验证。

@@ -15,6 +15,7 @@ from bills_analysis.excel_ops import (
     to_score,
     write_datum_cell,
 )
+from bills_analysis.integrations.app_config import resolve_app_config_path
 
 
 def load_results(path: Path) -> list[dict[str, Any]]:
@@ -72,7 +73,7 @@ def map_daily_json_to_excel(
 
     out_path = excel_path or json_path.with_suffix(".xlsx")
     items = load_results(json_path)
-    thresholds_path = config_path or Path("tests/config.json")
+    thresholds_path = config_path or resolve_app_config_path()
     thresholds = load_json_object(thresholds_path, empty_message=f"Empty thresholds file: {thresholds_path}")
     rows, zbon_files_by_date = build_rows_with_meta(items, thresholds)
     if not rows:
@@ -186,7 +187,7 @@ def map_office_json_to_excel(
 
     out_path = excel_path or json_path.with_suffix(".xlsx")
     items = load_results(json_path)
-    config_source = config_path or Path("tests/config.json")
+    config_source = config_path or resolve_app_config_path()
     config = load_json_object(config_source, empty_message=f"Empty config file: {config_source}")
 
     headers = [

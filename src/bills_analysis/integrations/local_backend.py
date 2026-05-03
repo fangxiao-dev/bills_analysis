@@ -14,6 +14,7 @@ import fitz
 from openpyxl import Workbook
 
 from bills_analysis.excel_ops import normalize_date, write_datum_cell
+from bills_analysis.integrations.app_config import resolve_app_config_path
 from bills_analysis.integrations.excel_mapper_adapter import map_daily_json_to_excel
 from bills_analysis.integrations.office_receiver_mapping import resolve_expected_receiver_from_metadata
 from bills_analysis.integrations.office_semantics import match_receiver_address, resolve_receiver_ok
@@ -362,7 +363,7 @@ class LocalPipelineBackend:
         results_path = out_dir / "results.json"
         review_path = out_dir / "review_rows.json"
         max_pages = 4
-        config_path = Path("tests") / "config.json"
+        config_path = resolve_app_config_path()
         try:
             config_payload = json.loads(config_path.read_text(encoding="utf-8"))
             max_pages = int(config_payload.get("max_pages", max_pages))
@@ -868,7 +869,7 @@ class LocalPipelineBackend:
         map_daily_json_to_excel(
             temp_json_path,
             excel_path=out_path,
-            config_path=Path("tests") / "config.json",
+            config_path=resolve_app_config_path(),
         )
 
     def _write_office_validated_excel(self, batch: BatchRecord, out_path: Path) -> None:

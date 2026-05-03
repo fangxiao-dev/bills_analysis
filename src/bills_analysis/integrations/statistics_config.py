@@ -7,7 +7,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CONFIG_PATH = Path("tests") / "config.json"
+from bills_analysis.integrations.app_config import resolve_app_config_path
+
 DEFAULT_MANUAL_EXPENSE_TYPES = ["Personalkosten", "代付款"]
 MANUAL_EXPENSE_TYPES_KEY = "statistics_manual_expense_types"
 
@@ -18,7 +19,7 @@ def resolve_statistics_config_path() -> Path:
     custom = os.getenv("STATISTICS_CONFIG_PATH", "").strip()
     if custom:
         return Path(custom)
-    return DEFAULT_CONFIG_PATH
+    return resolve_app_config_path()
 
 
 def _load_config(path: Path) -> dict[str, Any]:
