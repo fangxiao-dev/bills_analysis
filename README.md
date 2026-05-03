@@ -106,6 +106,12 @@ Local backend CLI skeleton for the invoice Azure API extraction PoC.
 - Queue merge:  
   `POST /v1/batches/{batch_id}/merge`
   - `monthly_excel_path` can be omitted if already uploaded through `/merge-source/local`
+- List manual expense types:  
+  `GET /v1/statistics/manual-expense-types`
+- Create manual expense type:  
+  `POST /v1/statistics/manual-expense-types`
+- Preview monthly statistics (pass `year_month` as `YYYY-MM`):  
+  `POST /v1/statistics/monthly-preview`
 
 Recommended frontend flow:
 1. `POST /v1/batches/upload`
@@ -149,6 +155,12 @@ Docker notes:
 - The single service `api` builds backend + frontend static assets from `Dockerfile`.
 - API is exposed on `http://127.0.0.1:8002`.
 - Local `outputs/` is mounted into container path `/app/outputs` for persisted artifacts.
+
+## What's new (since v0.2.0)
+- **Statistics dashboard**: monthly KPI overview with expense breakdown drilldown (`/statistics` page).
+- **Manual Ausgabe**: manually record and categorise out-of-pocket expenses via UI and API.
+- **Bar bill_id extraction**: `daily` pipeline now extracts the Bar invoice bill ID from scanned receipts.
+- **SPA routing**: deep-link URLs now resolve correctly when served from the FastAPI static asset handler.
 
 ## Next steps (per PoC)
 - Fill the pipeline (render → preprocess → Azure API → extract → evidence) inside `src/bills_analysis/`.
