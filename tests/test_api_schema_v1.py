@@ -1146,6 +1146,60 @@ def test_local_backend_calls_preprocess_and_extract(monkeypatch: pytest.MonkeyPa
     assert organized_root.resolve() in organized_path.resolve().parents
 
 
+def test_local_backend_daily_bar_invoice_uses_bill_id_not_tax_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Daily Bar invoice rows should expose Rechnung-Nr. as bill_id, not tax_id."""
+
+    def fake_compress(pdf_path: Path, *, dest_dir: Path, dpi: int, name_suffix: str) -> Path:
+        """Stub compression helper returning an archive path."""
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        archived = dest_dir / f"{pdf_path.stem}_{name_suffix}.pdf"
+        archived.write_bytes(b"%PDF-1.4\narchived\n%%EOF")
+        return archived
+
+    def fake_analyze(pdf_path: Path, *, model_id: str, return_fields: bool) -> Any:
+        """Stub invoice extraction with separate bill_id and invoice tax id values."""
+
+        assert model_id == "prebuilt-invoice"
+        assert return_fields is False
+        return {
+            "store_name": "Demo Shop",
+            "brutto": 12.34,
+            "netto": 10.0,
+            "bill_id": "RE-1001",
+            "invoice_id": "DE-TAX-999",
+            "confidence_bill_id": 0.0,
+            "confidence_invoice_id": 0.9,
+        }
+
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._compress_pdf_for_archive", fake_compress)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._analyze_pdf_with_azure", fake_analyze)
+    monkeypatch.setattr("bills_analysis.integrations.local_backend._safe_pdf_page_info", lambda _path: (1, 1.0))
+
+    test_root = Path("outputs") / "pytest_tmp" / str(uuid4())
+    test_root.mkdir(parents=True, exist_ok=True)
+    src_pdf = test_root / "bar_invoice.pdf"
+    src_pdf.write_bytes(b"%PDF-1.4\nsource\n%%EOF\n" + (b"0" * (2 * 1024 * 1024)))
+    req = CreateBatchRequest(
+        type="daily",
+        run_date="04/02/2026",
+        inputs=[{"path": str(src_pdf), "category": "bar"}],
+        metadata={},
+    )
+    batch = BatchRecord.new(req)
+    backend = LocalPipelineBackend(root=test_root / "out")
+
+    artifacts = asyncio.run(backend.process_batch(batch))
+
+    row = artifacts["review_rows"][0]
+    assert row["result"]["file_type"] == "invoice"
+    assert row["result"]["bill_id"] == "RE-1001"
+    assert "tax_id" not in row["result"]
+    results_payload = json.loads(Path(artifacts["artifacts"]["result_json_path"]).read_text(encoding="utf-8"))
+    organized_path = Path(results_payload["items"][0]["organized_path"])
+    assert organized_path.name.endswith("_RE-1001.pdf")
+
+
 def test_local_backend_persists_office_di_fields_artifact(monkeypatch: pytest.MonkeyPatch) -> None:
     """Office processing should persist cleaned DI fields by row id for prompt tuning datasets."""
 

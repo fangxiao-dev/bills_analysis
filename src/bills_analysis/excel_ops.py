@@ -244,6 +244,7 @@ def build_rows_with_meta(
         brutto = to_float(result.get("brutto"))
         netto = to_float(result.get("netto"))
         store = str(result.get("store_name") or "").strip()
+        bill_id = str(result.get("bill_id") or "").strip() or None
 
         if category == "zbon":
             row["Umsatz Brutto"] = brutto
@@ -252,7 +253,7 @@ def build_rows_with_meta(
             row["_zbon_count"] += 1
             if len(row["Ausgaben"]) < max_zbon:
                 row["Ausgaben"].append(
-                    {"Name": store, "Brutto": brutto, "Netto": netto}
+                    {"Name": store, "Rechnung-Nr": bill_id, "Brutto": brutto, "Netto": netto}
                 )
                 zbon_files_by_date[run_date].append(str(item.get("filename") or ""))
             row["Wie viel Rechnungen"] = row["_zbon_count"]
@@ -274,10 +275,12 @@ def build_rows_with_meta(
             if idx < len(row["Ausgaben"]):
                 item = row["Ausgaben"][idx]
                 out[f"{key_base} Name"] = item["Name"]
+                out[f"{key_base} Rechnung-Nr"] = item["Rechnung-Nr"]
                 out[f"{key_base} Brutto"] = item["Brutto"]
                 out[f"{key_base} Netto"] = item["Netto"]
             else:
                 out[f"{key_base} Name"] = None
+                out[f"{key_base} Rechnung-Nr"] = None
                 out[f"{key_base} Brutto"] = None
                 out[f"{key_base} Netto"] = None
         output_rows.append(out)

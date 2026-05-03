@@ -5,6 +5,8 @@ import json
 import os
 import re
 
+from bills_analysis.integrations.invoice_content_extractor import extract_bill_id
+
 try:
     from dotenv import load_dotenv
 except ModuleNotFoundError:
@@ -185,7 +187,10 @@ def analyze_document_with_azure(
         "netto": None,
         "confidence_netto": None,
         "invoice_id": None,
-        "confidence_invoice_id": None
+        "confidence_invoice_id": None,
+        "bill_id": None,
+        "confidence_bill_id": None,
+        "bill_id_source": None,
     }
 
     fields_dict = {}
@@ -256,6 +261,10 @@ def analyze_document_with_azure(
 
         # 5. Invoice ID (仅限 Invoice 模型)
         if model_id == "prebuilt-invoice":
+            bill_id_candidate = extract_bill_id(result)
+            extracted_data["bill_id"] = bill_id_candidate.get("value")
+            extracted_data["confidence_bill_id"] = 0.0 if extracted_data["bill_id"] else None
+            extracted_data["bill_id_source"] = bill_id_candidate.get("source")
             f_inv_id = fields.get("VendorTaxId")
             extracted_data["invoice_id"] = f_inv_id.value_string.replace(" ", "") if f_inv_id else None
             extracted_data["confidence_invoice_id"] = f_inv_id.confidence if f_inv_id else None

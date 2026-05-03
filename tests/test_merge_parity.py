@@ -126,6 +126,7 @@ def test_daily_merge_creates_missing_monthly_template() -> None:
     ws_monthly = wb_monthly.active
     headers = [cell.value for cell in ws_monthly[1]]
     assert headers[:4] == ["Datum", "Umsatz Brutto", "Umsatz Netto", "Wie viel Rechnungen"]
+    assert "Ausgabe 1 Rechnung-Nr" in headers
     assert "Ausgabe sum Brutto" in headers
     assert "Ausgabe Sum Netto" in headers
 
@@ -146,13 +147,15 @@ def test_daily_merge_writes_expense_sum_columns() -> None:
         validated,
         [
             "Datum",
+            "Ausgabe 1 Rechnung-Nr",
             "Ausgabe 1 Brutto",
             "Ausgabe 1 Netto",
+            "Ausgabe 2 Rechnung-Nr",
             "Ausgabe 2 Brutto",
             "Ausgabe 2 Netto",
             "need review",
         ],
-        [["04/02/2026", 10.0, 8.0, 5.5, 4.5, False]],
+        [["04/02/2026", "RE-1", 10.0, 8.0, "RE-2", 5.5, 4.5, False]],
     )
     _new_book(
         monthly,

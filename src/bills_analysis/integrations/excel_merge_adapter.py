@@ -63,6 +63,7 @@ def _build_daily_template_headers(*, max_expense_rows: int = 5) -> list[str]:
         headers.extend(
             [
                 f"Ausgabe {idx} Name",
+                f"Ausgabe {idx} Rechnung-Nr",
                 f"Ausgabe {idx} Brutto",
                 f"Ausgabe {idx} Netto",
             ]

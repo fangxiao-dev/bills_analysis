@@ -160,6 +160,7 @@
   "review.columns.run_date": "Datum",
   "review.columns.type": "Typ",
   "review.columns.sender": "Absender",
+  "review.columns.bill_id": "Rechnung-Nr",
   "review.columns.tax_id": "Steuer-ID",
   "review.columns.receiver_ok": "Empfänger OK",
   "review.columns.receiver_address_ok": "Adresse OK",

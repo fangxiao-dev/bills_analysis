@@ -159,6 +159,7 @@
   "review.columns.run_date": "日期",
   "review.columns.type": "类型",
   "review.columns.sender": "发件人",
+  "review.columns.bill_id": "账单号",
   "review.columns.tax_id": "税号",
   "review.columns.receiver_ok": "公司信息一致",
   "review.columns.receiver_address_ok": "地址一致",

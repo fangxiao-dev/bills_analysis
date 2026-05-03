@@ -192,7 +192,7 @@ function createScenarioState(batchType: BatchType) {
             row_id: "row-0002",
             category: "bar",
             filename: "bar.pdf",
-            result: { store_name: "Demo Store", brutto: 12.34, netto: 10.0, run_date: "04/02/2026" },
+            result: { store_name: "Demo Store", brutto: 12.34, netto: 10.0, bill_id: "RE-1001", run_date: "04/02/2026" },
             score: {},
             preview_url: `http://127.0.0.1:4173/v1/batches/${batchId}/files/row-0002/preview`,
           },

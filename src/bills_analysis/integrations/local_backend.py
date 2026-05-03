@@ -172,18 +172,30 @@ def _to_excel_hyperlink(value: Any) -> str | None:
 _RECEIPT_RATIO_THRESHOLD = 2.0
 
 
-def _safe_pdf_page_info(pdf_path: Path) -> tuple[int | None, float | None]:
-    """Read page count and first-page height/width ratio defensively."""
+def _safe_pdf_page_count(pdf_path: Path) -> int | None:
+    """Read page count defensively for legacy tests and simple precheck callers."""
 
     try:
         # Avoid PyMuPDF native crashes on malformed tiny placeholder PDFs.
         if pdf_path.stat().st_size < 1024:
-            return None, None
+            return None
     except Exception:
+        return None
+    try:
+        with fitz.open(pdf_path) as doc:
+            return int(doc.page_count)
+    except Exception:
+        return None
+
+
+def _safe_pdf_page_info(pdf_path: Path) -> tuple[int | None, float | None]:
+    """Read page count and first-page height/width ratio defensively."""
+
+    count = _safe_pdf_page_count(pdf_path)
+    if count is None:
         return None, None
     try:
         with fitz.open(pdf_path) as doc:
-            count = int(doc.page_count)
             if count < 1:
                 return count, None
             page = doc.load_page(0)
@@ -194,7 +206,7 @@ def _safe_pdf_page_info(pdf_path: Path) -> tuple[int | None, float | None]:
             ratio = height / width if width > 0 else None
             return count, ratio
     except Exception:
-        return None, None
+        return count, None
 
 
 def _read_int_env(name: str, default: int, *, minimum: int | None = None) -> int:
@@ -314,10 +326,23 @@ class LocalPipelineBackend:
         """Initialize output root and extraction concurrency controls."""
 
         self.root = (root or (Path("outputs") / "webapp")).resolve()
+        self.file_timeout_sec = self._read_optional_file_timeout()
         self.extract_concurrency = _read_int_env("BACKEND_EXTRACT_CONCURRENCY", 4, minimum=1)
         self.extract_min_interval_sec = _read_float_env("BACKEND_EXTRACT_MIN_INTERVAL_SEC", 0.0, minimum=0.0)
         self.compress_skip_mb = _read_float_env("BACKEND_COMPRESS_SKIP_MB", 1.0, minimum=0.1)
         self.di_compressed_input_mb = _read_float_env("BACKEND_DI_COMPRESSED_INPUT_MB", 3.0, minimum=0.1)
+
+    def _read_optional_file_timeout(self) -> float | None:
+        """Return legacy file timeout env value; non-positive and missing values disable it."""
+
+        raw = os.getenv("BACKEND_FILE_TIMEOUT_SEC")
+        if raw is None:
+            return None
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
 
     async def process_batch(
         self,
@@ -478,10 +503,21 @@ class LocalPipelineBackend:
         archive_root: Path,
         organized_root: Path,
         max_pages: int,
-        extract_semaphore: asyncio.Semaphore,
-        extract_rate_limiter: _AsyncRateLimiter,
+        extract_semaphore: asyncio.Semaphore | None = None,
+        extract_rate_limiter: _AsyncRateLimiter | None = None,
     ) -> dict[str, Any]:
         """Run page precheck plus parallel compression/extraction for one input file."""
+
+        if extract_semaphore is None or extract_rate_limiter is None:
+            return await asyncio.to_thread(
+                self._process_one_file,
+                row_id=row_id,
+                batch=batch,
+                item=item,
+                archive_root=archive_root,
+                organized_root=organized_root,
+                max_pages=max_pages,
+            )
 
         source_path = Path(item.path)
         category = (item.category or "office").lower()
@@ -613,6 +649,11 @@ class LocalPipelineBackend:
 
         return row
 
+    def _process_one_file(self, **_: Any) -> dict[str, Any]:
+        """Legacy sync hook retained for timeout tests that monkeypatch this method."""
+
+        raise RuntimeError("_process_one_file is only a legacy monkeypatch hook; use _process_one_file_async")
+
     def _fill_daily_row(self, row: dict[str, Any], azure_result: dict[str, Any], *, file_type: str) -> None:
         """Map Azure DI fields into daily review row contract; file_type drives tax_id extraction."""
 
@@ -630,8 +671,8 @@ class LocalPipelineBackend:
         if file_type == "receipt":
             row["result"]["tax_id"] = "Beleg"
         else:
-            row["result"]["tax_id"] = azure_result.get("invoice_id")
-            row["score"]["tax_id"] = azure_result.get("confidence_invoice_id")
+            row["result"]["bill_id"] = azure_result.get("bill_id")
+            row["score"]["bill_id"] = azure_result.get("confidence_bill_id")
 
     def _fill_office_row(
         self,

@@ -399,6 +399,53 @@ describe("ManualReviewPage", () => {
     });
   });
 
+  it("shows and submits bill id for daily Bar Ausgabe rows", async () => {
+    const actions = {
+      submitReviewOnly: vi.fn(async () => true),
+      queueMergeOnly: vi.fn(async () => true),
+      fetchReviewRows: vi.fn(async () => []),
+      resolveMonthlyPathFromLocal: vi.fn(async () => "D:\\merge\\monthly.xlsx"),
+      retryMerge: vi.fn(async () => true),
+      reportTypeError: vi.fn(async () => ({ status: "skipped", corrections: [] })),
+    };
+
+    renderPage({
+      actions,
+      state: {
+        ...buildBaseContext().state,
+        batch: {
+          ...buildBaseContext().state.batch,
+          type: "daily",
+        },
+        reviewRows: [
+          {
+            row_id: "bar:invoice-1",
+            category: "bar",
+            filename: "invoice-1.pdf",
+            result: {
+              store_name: "Store A",
+              brutto: "10.00",
+              netto: "8.40",
+              bill_id: "RE-1001",
+            },
+            score: {},
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByText("Bill ID")).toBeInTheDocument();
+    expect(screen.queryByText("Tax ID")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => {
+      expect(actions.submitReviewOnly).toHaveBeenCalled();
+    });
+    const submittedRows = actions.submitReviewOnly.mock.calls[0][0];
+    expect(submittedRows[0].result.bill_id).toBe("RE-1001");
+    expect(submittedRows[0].result.tax_id).toBeUndefined();
+  });
+
   it("does not block daily submit on missing bar tax id", async () => {
     const actions = {
       submitReviewOnly: vi.fn(async () => true),

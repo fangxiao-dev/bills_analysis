@@ -46,7 +46,7 @@ export function ManualReviewPage() {
       { key: "store_name", label: t("review.columns.store_name") },
       { key: "brutto", label: t("review.columns.brutto") },
       { key: "netto", label: t("review.columns.netto") },
-      { key: "tax_id", label: t("review.columns.tax_id") },
+      { key: "bill_id", label: t("review.columns.bill_id") },
     ],
     [t],
   );
@@ -559,7 +559,7 @@ function buildDraftRowsFromFiles(files, previous) {
         store_name: current?.store_name ?? "-",
         brutto: current?.brutto ?? "-",
         netto: current?.netto ?? "-",
-        tax_id: current?.tax_id ?? "-",
+        bill_id: current?.bill_id ?? "-",
         score: current?.score ?? {},
         raw_result: current?.raw_result ?? {},
         preview_path: current?.preview_path ?? "",
@@ -651,7 +651,7 @@ function buildDraftRowsFromBackend(rows, previous) {
         store_name: current?.store_name ?? normalizeCellValue(result.store_name),
         brutto: current?.brutto ?? normalizeCellValue(result.brutto),
         netto: current?.netto ?? normalizeCellValue(result.netto),
-        tax_id: current?.tax_id ?? normalizeCellValue(result.tax_id),
+        bill_id: current?.bill_id ?? normalizeCellValue(result.bill_id),
       });
       return;
     }
@@ -697,7 +697,8 @@ function composeReviewRows(draft, runDate) {
         baseResult.store_name = row.store_name;
         baseResult.brutto = row.brutto;
         baseResult.netto = row.netto;
-        baseResult.tax_id = row.tax_id;
+        baseResult.bill_id = row.bill_id;
+        delete baseResult.tax_id;
         baseResult.run_date = runDate;
       } else if (category === "zbon") {
         baseResult.brutto = row.brutto;

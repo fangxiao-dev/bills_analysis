@@ -36,7 +36,13 @@ def test_daily_excel_mapping_parity() -> None:
             {
                 "filename": "bar.pdf",
                 "category": "bar",
-                "result": {"run_date": "04/02/2026", "store_name": "REWE", "brutto": "20.00", "netto": "16.00"},
+                "result": {
+                    "run_date": "04/02/2026",
+                    "store_name": "REWE",
+                    "brutto": "20.00",
+                    "netto": "16.00",
+                    "bill_id": "RE-1001",
+                },
                 "score": {"store_name": 0.9, "brutto": 0.9, "netto": 0.9},
                 "preview_path": str(root / "bar.pdf"),
             },
@@ -53,6 +59,7 @@ def test_daily_excel_mapping_parity() -> None:
     assert row["Datum"] == "04/02/2026"
     assert float(row["Umsatz Brutto"]) == 100.0
     assert row["Ausgabe 1 Name"] == "REWE"
+    assert row["Ausgabe 1 Rechnung-Nr"] == "RE-1001"
     assert float(row["Ausgabe 1 Brutto"]) == 20.0
 
 

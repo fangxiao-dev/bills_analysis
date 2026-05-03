@@ -57,22 +57,22 @@ def test_compressed_pdf_name_parity() -> None:
     )
     assert bar_receipt == "REWE_10,20_Beleg.pdf"
 
-    # bar invoice + valid tax_id
+    # bar invoice + valid bill_id
     bar_invoice = get_compressed_pdf_name(
         "bar",
-        {"store_name": "REWE", "brutto": "10.20", "file_type": "invoice", "tax_id": "INV-007"},
+        {"store_name": "REWE", "brutto": "10.20", "file_type": "invoice", "bill_id": "INV-007"},
         "04/02/2026",
     )
     assert bar_invoice == "REWE_10,20_INV-007.pdf"
 
-    # bar invoice + invalid tax_id → NA
+    # bar invoice + invalid bill_id → NA
     for bad in ("", "-", None):
         name = get_compressed_pdf_name(
             "bar",
-            {"store_name": "REWE", "brutto": "10.20", "file_type": "invoice", "tax_id": bad},
+            {"store_name": "REWE", "brutto": "10.20", "file_type": "invoice", "bill_id": bad},
             "04/02/2026",
         )
-        assert name == "REWE_10,20_NA.pdf", f"expected NA for bar invoice tax_id={bad!r}"
+        assert name == "REWE_10,20_NA.pdf", f"expected NA for bar invoice bill_id={bad!r}"
 
     # bar with missing file_type defaults to receipt behaviour (Beleg)
     bar_default = get_compressed_pdf_name(
